@@ -1,0 +1,44 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: '0 0 * * *'          # Daily at 00:00 UTC
+  workflow_dispatch:              # Allow manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Sync from upstream
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream and sync
+        run: |
+          git remote add upstream https://github.com/HKUDS/DeepTutor.git || true
+          git fetch upstream
+
+          # Skip if already in sync
+          LOCAL=$(git rev-parse HEAD)
+          REMOTE=$(git rev-parse upstream/main)
+          BASE=$(git merge-base HEAD upstream/main)
+
+          if [ "$LOCAL" = "$REMOTE" ] || [ "$LOCAL" = "$BASE" ]; then
+            echo "Already up to date with upstream."
+            exit 0
+          fi
+
+          echo "Syncing $(git rev-list --count HEAD..upstream/main) new commit(s) from upstream..."
+          git merge upstream/main --no-edit -m "chore: sync with upstream HKUDS/DeepTutor"
+          git push origin main
