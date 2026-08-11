@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: agents/vision_solver
+title: 几何题图→GeoGebra 视觉求解代理
+scope:
+    - deeptutor/agents/vision_solver/
+source_files: []
+depends_on: []
+related_to:
+    - path: agents/math_animator
+    - path: web_frontend/components/root_shells

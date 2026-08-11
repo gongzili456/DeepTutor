@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: agents/chat
+title: 聊天智能体与对话会话管理
+scope:
+    - deeptutor/agents/chat/
+source_files: []
+depends_on: []
+related_to:
+    - path: capabilities/solve
+    - path: services/session
+    - path: tools

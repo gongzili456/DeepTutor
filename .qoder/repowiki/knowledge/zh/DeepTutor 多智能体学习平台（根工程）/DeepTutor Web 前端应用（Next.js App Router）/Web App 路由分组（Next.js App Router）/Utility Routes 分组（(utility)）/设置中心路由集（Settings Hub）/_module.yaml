@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: web_frontend/app_routes/utility_routes/settings
+title: 设置中心路由集（Settings Hub）
+scope:
+    - web/app/(utility)/settings/
+source_files: []
+depends_on: []
+related_to: []

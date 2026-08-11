@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: web_frontend/app_routes/workspace_routes/co_writer
+title: Co-Writer 协作文档编辑器
+scope:
+    - web/app/(workspace)/co-writer/
+source_files: []
+depends_on: []
+related_to:
+    - path: co_writer

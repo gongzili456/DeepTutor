@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: services/parsing
+title: 文档解析服务（Parsing Service）
+scope:
+    - deeptutor/services/parsing/
+source_files: []
+depends_on: []
+related_to:
+    - path: services/rag
+    - path: tools
+    - path: web_frontend/app_routes/utility_routes/settings/network_attachments

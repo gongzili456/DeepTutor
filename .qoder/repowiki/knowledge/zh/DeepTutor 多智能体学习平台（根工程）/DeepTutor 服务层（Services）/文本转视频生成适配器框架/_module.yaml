@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: services/videogen
+title: 文本转视频生成适配器框架
+scope:
+    - deeptutor/services/videogen/
+source_files: []
+depends_on: []
+related_to:
+    - path: agents/math_animator

@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: capabilities/subagent
+title: Subagent 能力（本地/伙伴智能体委托）
+scope:
+    - deeptutor/capabilities/subagent/
+source_files: []
+depends_on: []
+related_to:
+    - path: services/partners
+    - path: services/subagent

@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: services/cli_apps
+title: CLI 应用目录与沙箱执行服务
+scope:
+    - deeptutor/services/cli_apps/
+source_files: []
+depends_on: []
+related_to: []

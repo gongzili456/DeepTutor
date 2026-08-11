@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: web_frontend/tests
+title: Web 前端测试套件（Node 单元测试与 Playwright E2E）
+scope:
+    - web/tests/
+source_files: []
+depends_on: []
+related_to: []

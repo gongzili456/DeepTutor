@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: services/mcp/server_runtime
+title: MCP 服务器连接管理与内置 PageIndex 注入
+scope:
+    - deeptutor/services/mcp/pageindex_server.py
+    - deeptutor/services/mcp/manager.py
+    - deeptutor/services/mcp/config.py
+source_files: []
+depends_on: []
+related_to:
+    - path: services/mcp/catalog
+    - path: services/mcp/network_auth_secrets
+    - path: services/mcp/session_user_config

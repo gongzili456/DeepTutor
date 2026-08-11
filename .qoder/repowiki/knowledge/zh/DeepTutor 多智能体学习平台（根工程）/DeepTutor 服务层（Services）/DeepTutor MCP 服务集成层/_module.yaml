@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: services/mcp
+title: DeepTutor MCP 服务集成层
+scope:
+    - deeptutor/services/mcp/
+source_files: []
+depends_on: []
+related_to:
+    - path: api

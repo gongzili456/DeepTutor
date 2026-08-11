@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: services/memory/consolidator
+title: 记忆整合器（Consolidator）
+scope:
+    - deeptutor/services/memory/consolidator/
+source_files: []
+depends_on: []
+related_to:
+    - path: services/memory/core_store

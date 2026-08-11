@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: web_frontend/components/settings
+title: 设置中心（Settings Hub）
+scope:
+    - web/components/settings/
+source_files: []
+depends_on: []
+related_to:
+    - path: api
+    - path: services/config

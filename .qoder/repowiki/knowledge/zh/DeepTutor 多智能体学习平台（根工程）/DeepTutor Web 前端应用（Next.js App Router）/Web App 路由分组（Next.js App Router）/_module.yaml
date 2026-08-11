@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: web_frontend/app_routes
+title: Web App 路由分组（Next.js App Router）
+scope:
+    - web/app/
+source_files: []
+depends_on: []
+related_to: []

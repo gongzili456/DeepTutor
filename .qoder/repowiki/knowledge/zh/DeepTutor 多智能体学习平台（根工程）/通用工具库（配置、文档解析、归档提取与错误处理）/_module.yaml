@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: utils
+title: 通用工具库（配置、文档解析、归档提取与错误处理）
+scope:
+    - deeptutor/utils/
+source_files: []
+depends_on: []
+related_to: []

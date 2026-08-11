@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: web_frontend/components/notebook
+title: 笔记本记录选择与保存组件
+scope:
+    - web/components/notebook/
+source_files: []
+depends_on: []
+related_to:
+    - path: api

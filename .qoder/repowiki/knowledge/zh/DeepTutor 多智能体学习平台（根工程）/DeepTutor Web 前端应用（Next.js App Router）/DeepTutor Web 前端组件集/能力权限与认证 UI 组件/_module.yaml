@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: web_frontend/components/auth_access
+title: 能力权限与认证 UI 组件
+scope:
+    - web/components/access/
+    - web/components/auth/
+source_files: []
+depends_on: []
+related_to: []

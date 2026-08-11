@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: web_frontend/components/common_ui
+title: 通用 UI 与 Markdown 渲染组件库
+scope:
+    - web/components/common/
+    - web/components/ui/
+source_files: []
+depends_on: []
+related_to: []

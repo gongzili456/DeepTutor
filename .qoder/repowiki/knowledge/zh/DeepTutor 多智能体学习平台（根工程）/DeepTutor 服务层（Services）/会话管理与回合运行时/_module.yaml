@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: services/session
+title: 会话管理与回合运行时
+scope:
+    - deeptutor/services/session/
+source_files: []
+depends_on: []
+related_to:
+    - path: agents/chat
+    - path: api
+    - path: web_frontend/app_routes/utility_routes/settings/chat_memory_search

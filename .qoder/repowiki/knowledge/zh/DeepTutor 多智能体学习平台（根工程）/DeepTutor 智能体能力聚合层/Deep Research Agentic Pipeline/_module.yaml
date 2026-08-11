@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: agents/research
+title: Deep Research Agentic Pipeline
+scope:
+    - deeptutor/agents/research/
+source_files: []
+depends_on: []
+related_to:
+    - path: book_engine
+    - path: services/search

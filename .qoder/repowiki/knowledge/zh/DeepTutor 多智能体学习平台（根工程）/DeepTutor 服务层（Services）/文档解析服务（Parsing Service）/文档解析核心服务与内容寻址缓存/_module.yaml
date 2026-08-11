@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: services/parsing/parsing_core
+title: 文档解析核心服务与内容寻址缓存
+scope:
+    - deeptutor/services/parsing/base.py
+    - deeptutor/services/parsing/service.py
+    - deeptutor/services/parsing/cache.py
+source_files: []
+depends_on: []
+related_to:
+    - path: services/parsing/engines

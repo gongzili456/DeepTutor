@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: services/rag/pageindex_pipeline
+title: PageIndex 云端 RAG 索引与检索管道
+scope:
+    - deeptutor/services/rag/pipelines/pageindex/
+source_files: []
+depends_on: []
+related_to:
+    - path: services/rag/ima_pipeline
+    - path: services/rag/shared_orchestration

@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: partners
+title: IM 渠道与消息总线（Partners）
+scope:
+    - deeptutor/partners/
+source_files: []
+depends_on: []
+related_to:
+    - path: services/voice
+    - path: web_frontend/components/partners

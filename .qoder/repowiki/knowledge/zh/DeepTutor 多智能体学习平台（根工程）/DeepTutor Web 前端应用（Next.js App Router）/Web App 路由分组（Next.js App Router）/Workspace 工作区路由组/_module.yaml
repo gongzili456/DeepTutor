@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: web_frontend/app_routes/workspace_routes
+title: Workspace 工作区路由组
+scope:
+    - web/app/(workspace)/
+source_files: []
+depends_on: []
+related_to: []

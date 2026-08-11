@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: web_frontend/components/space
+title: 学习空间（Learning Space）模块
+scope:
+    - web/components/space/
+source_files: []
+depends_on: []
+related_to: []

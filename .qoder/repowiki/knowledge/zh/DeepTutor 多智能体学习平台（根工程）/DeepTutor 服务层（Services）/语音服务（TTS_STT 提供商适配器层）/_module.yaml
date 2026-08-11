@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: services/voice
+title: 语音服务（TTS/STT 提供商适配器层）
+scope:
+    - deeptutor/services/voice/
+source_files: []
+depends_on: []
+related_to:
+    - path: api
+    - path: partners
+    - path: web_frontend/app_routes/utility_routes/settings/media_processing

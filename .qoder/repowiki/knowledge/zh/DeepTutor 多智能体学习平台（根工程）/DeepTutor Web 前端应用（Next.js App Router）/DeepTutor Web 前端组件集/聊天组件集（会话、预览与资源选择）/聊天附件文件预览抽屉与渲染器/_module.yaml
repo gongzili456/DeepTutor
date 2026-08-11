@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: web_frontend/components/chat/file_previewers
+title: 聊天附件文件预览抽屉与渲染器
+scope:
+    - web/components/chat/preview/
+source_files: []
+depends_on: []
+related_to: []

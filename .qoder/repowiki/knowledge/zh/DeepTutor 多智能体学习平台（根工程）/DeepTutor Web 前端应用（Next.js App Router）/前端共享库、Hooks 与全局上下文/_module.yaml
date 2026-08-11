@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: web_frontend/shared_libs
+title: 前端共享库、Hooks 与全局上下文
+scope:
+    - web/lib/
+    - web/hooks/
+    - web/context/
+source_files: []
+depends_on: []
+related_to: []

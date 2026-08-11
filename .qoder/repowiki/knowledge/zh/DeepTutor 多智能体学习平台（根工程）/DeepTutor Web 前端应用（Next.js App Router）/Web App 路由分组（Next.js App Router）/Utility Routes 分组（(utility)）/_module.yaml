@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: web_frontend/app_routes/utility_routes
+title: Utility Routes 分组（(utility)）
+scope:
+    - web/app/(utility)/
+source_files: []
+depends_on: []
+related_to: []

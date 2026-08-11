@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: web_frontend/app_routes/utility_routes/settings/network_attachments
+title: 设置页：网络、附件与嵌入配置
+scope:
+    - web/app/(utility)/settings/network/
+    - web/app/(utility)/settings/attachments/
+    - web/app/(utility)/settings/embedding/
+source_files: []
+depends_on: []
+related_to:
+    - path: services/parsing

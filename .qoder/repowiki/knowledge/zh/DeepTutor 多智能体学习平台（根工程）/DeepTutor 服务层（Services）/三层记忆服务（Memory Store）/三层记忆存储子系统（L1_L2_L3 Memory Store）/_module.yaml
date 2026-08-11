@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: services/memory/core_store
+title: 三层记忆存储子系统（L1/L2/L3 Memory Store）
+scope:
+    - deeptutor/services/memory/
+source_files: []
+depends_on: []
+related_to:
+    - path: services/memory/consolidator
+    - path: services/memory/snapshot

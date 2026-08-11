@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: web_frontend/app_routes/utility_routes/space/personas_and_learning
+title: 空间子页面路由（Persona、Notebook、精通之路）
+scope:
+    - web/app/(utility)/space/personas/
+    - web/app/(utility)/space/notebooks/
+    - web/app/(utility)/space/learning/
+source_files: []
+depends_on: []
+related_to:
+    - path: learning
+    - path: services/persona

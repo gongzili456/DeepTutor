@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: web_frontend/app_routes/workspace_routes/playground_home_layout
+title: 工作区布局与聊天/Playground 主页路由
+scope:
+    - web/app/(workspace)/playground/
+    - web/app/(workspace)/home/
+    - web/app/(workspace)/layout.tsx
+source_files: []
+depends_on: []
+related_to:
+    - path: api
