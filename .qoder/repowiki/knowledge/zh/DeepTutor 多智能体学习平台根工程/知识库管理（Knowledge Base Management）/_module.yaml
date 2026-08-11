@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: knowledge
+title: 知识库管理（Knowledge Base Management）
+scope:
+    - deeptutor/knowledge/
+source_files: []
+depends_on: []
+related_to: []

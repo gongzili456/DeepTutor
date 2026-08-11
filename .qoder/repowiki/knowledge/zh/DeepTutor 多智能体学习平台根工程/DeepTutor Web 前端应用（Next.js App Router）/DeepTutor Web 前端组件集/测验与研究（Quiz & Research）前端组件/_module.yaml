@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: web_frontend/components/quiz_research
+title: 测验与研究（Quiz & Research）前端组件
+scope:
+    - web/components/quiz/
+    - web/components/research/
+source_files: []
+depends_on: []
+related_to: []

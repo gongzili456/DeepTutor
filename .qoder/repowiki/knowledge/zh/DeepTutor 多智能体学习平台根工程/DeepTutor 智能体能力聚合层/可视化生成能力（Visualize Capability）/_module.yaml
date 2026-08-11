@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: agents/visualize
+title: 可视化生成能力（Visualize Capability）
+scope:
+    - deeptutor/agents/visualize/
+source_files: []
+depends_on: []
+related_to: []

@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: web_frontend/app_routes/utility_routes/settings/chat_memory_search
+title: 设置页：聊天/记忆/搜索配置
+scope:
+    - web/app/(utility)/settings/chat/
+    - web/app/(utility)/settings/memory/
+    - web/app/(utility)/settings/search/
+source_files: []
+depends_on: []
+related_to: []

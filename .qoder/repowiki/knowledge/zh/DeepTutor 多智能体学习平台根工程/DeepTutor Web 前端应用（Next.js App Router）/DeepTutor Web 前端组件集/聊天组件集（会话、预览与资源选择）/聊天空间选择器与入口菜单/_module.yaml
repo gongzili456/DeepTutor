@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: web_frontend/components/chat/pickers_and_space
+title: 聊天空间选择器与入口菜单
+scope:
+    - web/components/chat/space/
+    - web/components/chat/
+source_files: []
+depends_on: []
+related_to: []

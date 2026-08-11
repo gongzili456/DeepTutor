@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: web_frontend/multi_user_feature
-title: 多用户资源授权管理界面
-scope:
-    - web/features/multi-user/
-source_files: []
-depends_on: []
-related_to:
-    - path: multi_user

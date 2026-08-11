@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: services/rag/lightrag_pipeline
+title: LightRAG / RAG-Anything 知识图谱检索管道
+scope:
+    - deeptutor/services/rag/pipelines/lightrag/
+source_files: []
+depends_on: []
+related_to:
+    - path: services/rag/shared_orchestration

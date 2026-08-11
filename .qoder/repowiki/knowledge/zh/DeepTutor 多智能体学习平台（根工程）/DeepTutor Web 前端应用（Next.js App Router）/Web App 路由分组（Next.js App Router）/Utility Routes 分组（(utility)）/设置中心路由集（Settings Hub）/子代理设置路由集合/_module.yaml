@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: web_frontend/app_routes/utility_routes/settings/agents
-title: 子代理设置路由集合
-scope:
-    - web/app/(utility)/settings/agents/
-source_files: []
-depends_on: []
-related_to:
-    - path: api

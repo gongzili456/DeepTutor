@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: services/memory
+title: 三层记忆服务（Memory Store）
+scope:
+    - deeptutor/services/memory/
+source_files: []
+depends_on: []
+related_to: []

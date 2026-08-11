@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: services/search
+title: Web Search 服务与多搜索引擎提供商
+scope:
+    - deeptutor/services/search/
+source_files: []
+depends_on: []
+related_to: []

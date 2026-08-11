@@ -6,9 +6,17 @@
 - [engine.py](file://deeptutor/services/rag/pipelines/lightrag/engine.py)
 - [config.py](file://deeptutor/services/rag/pipelines/lightrag/config.py)
 - [storage.py](file://deeptutor/services/rag/pipelines/lightrag/storage.py)
+- [worker.py](file://deeptutor/services/rag/pipelines/lightrag/worker.py)
 - [modes.py](file://deeptutor/services/rag/pipelines/modes.py)
 - [test_lightrag_pipeline.py](file://tests/services/rag/test_lightrag_pipeline.py)
 </cite>
+
+## 更新摘要
+**变更内容**
+- 新增Worker进程隔离机制，防止同步图合并阻塞API请求和LLM处理
+- 更新索引流程架构，增加专用工作线程和事件循环
+- 增强异步I/O桥接能力，确保网络调用在正确的事件循环中执行
+- 完善错误处理和取消机制，支持优雅的资源清理
 
 ## 目录
 1. [简介](#简介)
@@ -23,14 +31,15 @@
 10. [附录：配置与迁移](#附录配置与迁移)
 
 ## 简介
-LightRAG管道基于 RAG-Anything/LightRAG，提供以图为核心的检索增强生成能力。它通过“轻量级知识图谱 + 向量索引”的混合检索策略，结合关键词匹配与语义相似度，实现更稳健、可解释的知识问答。该管道复用 DeepTutor 的统一解析层，将文档解析为多模态 content_list 后直接注入 LightRAG，避免重复解析；查询阶段支持多种模式（naive/local/global/hybrid/mix），默认采用 hybrid 以获得更好的召回与回答质量。存储层按 KB 版本目录组织，包含向量库、KV 存储与图数据，并通过元数据标记就绪状态。
+LightRAG管道基于 RAG-Anything/LightRAG，提供以图为核心的检索增强生成能力。它通过"轻量级知识图谱 + 向量索引"的混合检索策略，结合关键词匹配与语义相似度，实现更稳健、可解释的知识问答。**最新改进**：引入Worker进程隔离机制，使用专用工作线程和事件循环处理本地索引操作，防止同步图合并阻塞API请求和LLM处理。该管道复用 DeepTutor 的统一解析层，将文档解析为多模态 content_list 后直接注入 LightRAG，避免重复解析；查询阶段支持多种模式（naive/local/global/hybrid/mix），默认采用 hybrid 以获得更好的召回与回答质量。存储层按 KB 版本目录组织，包含向量库、KV 存储与图数据，并通过元数据标记就绪状态。
 
 ## 项目结构
-LightRAG 相关代码位于 services/rag/pipelines/lightrag 下，围绕四个职责清晰的模块组织：
+LightRAG 相关代码位于 services/rag/pipelines/lightrag 下，围绕五个职责清晰的模块组织：
 - pipeline：编排索引与检索流程，对接统一解析层与版本化存储
 - engine：对 RAG-Anything/LightRAG 的薄封装，仅在此处引入外部依赖
 - config：桥接 LLM/视觉/嵌入模型，暴露可用性与模式工具函数
 - storage：定义版本目录布局、就绪判定与元数据写入
+- **worker**：**新增** Worker进程隔离和事件循环管理，防止同步操作阻塞主服务
 
 ```mermaid
 graph TB
@@ -39,26 +48,31 @@ P["pipeline.py<br/>编排索引/检索"]
 E["engine.py<br/>RAG-Anything 封装"]
 C["config.py<br/>LLM/视觉/嵌入适配"]
 S["storage.py<br/>版本目录/就绪判定"]
+W["worker.py<br/>Worker进程隔离"]
 M["modes.py<br/>检索模式解析"]
 end
 P --> E
 P --> S
 P --> M
+P --> W
 E --> C
+W --> P
 ```
 
 **图表来源**
-- [pipeline.py:40-245](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L40-L245)
-- [engine.py:33-107](file://deeptutor/services/rag/pipelines/lightrag/engine.py#L33-L107)
-- [config.py:47-183](file://deeptutor/services/rag/pipelines/lightrag/config.py#L47-L183)
+- [pipeline.py:36-153](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L36-L153)
+- [engine.py:29-60](file://deeptutor/services/rag/pipelines/lightrag/engine.py#L29-L60)
+- [config.py:89-182](file://deeptutor/services/rag/pipelines/lightrag/config.py#L89-L182)
 - [storage.py:44-177](file://deeptutor/services/rag/pipelines/lightrag/storage.py#L44-L177)
+- [worker.py:24-137](file://deeptutor/services/rag/pipelines/lightrag/worker.py#L24-L137)
 - [modes.py:19-49](file://deeptutor/services/rag/pipelines/modes.py#L19-L49)
 
 **章节来源**
-- [pipeline.py:1-245](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L1-L245)
-- [engine.py:1-107](file://deeptutor/services/rag/pipelines/lightrag/engine.py#L1-L107)
-- [config.py:1-183](file://deeptutor/services/rag/pipelines/lightrag/config.py#L1-L183)
+- [pipeline.py:1-302](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L1-L302)
+- [engine.py:1-109](file://deeptutor/services/rag/pipelines/lightrag/engine.py#L1-L109)
+- [config.py:1-197](file://deeptutor/services/rag/pipelines/lightrag/config.py#L1-L197)
 - [storage.py:1-177](file://deeptutor/services/rag/pipelines/lightrag/storage.py#L1-L177)
+- [worker.py:1-138](file://deeptutor/services/rag/pipelines/lightrag/worker.py#L1-L138)
 - [modes.py:1-49](file://deeptutor/services/rag/pipelines/modes.py#L1-L49)
 
 ## 核心组件
@@ -66,22 +80,25 @@ E --> C
 - Engine：构建 RAG-Anything 实例，执行插入与查询；在查询前确保 LightRAG 已初始化，并兼容旧版参数差异。
 - Config：提供可用性检测、检索模式归一化、查询参数读取（top_k/response_type）以及 LLM/视觉/嵌入适配器。
 - Storage：维护 version-N 目录布局，判断是否产出有效索引（向量/KV/图），记录文档错误摘要，并写入 meta.json 作为就绪标记。
+- **Worker**：**新增** 提供Worker进程隔离，使用专用线程和事件循环运行索引操作，通过OwnerLoopBridge安全地访问主服务资源。
 - Modes：解析检索模式的优先级（显式 > KB 配置 > 全局默认 > 引擎内置默认）。
 
 **章节来源**
-- [pipeline.py:40-245](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L40-L245)
-- [engine.py:33-107](file://deeptutor/services/rag/pipelines/lightrag/engine.py#L33-L107)
-- [config.py:47-183](file://deeptutor/services/rag/pipelines/lightrag/config.py#L47-L183)
+- [pipeline.py:43-302](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L43-L302)
+- [engine.py:34-109](file://deeptutor/services/rag/pipelines/lightrag/engine.py#L34-L109)
+- [config.py:43-197](file://deeptutor/services/rag/pipelines/lightrag/config.py#L43-L197)
 - [storage.py:44-177](file://deeptutor/services/rag/pipelines/lightrag/storage.py#L44-L177)
+- [worker.py:24-137](file://deeptutor/services/rag/pipelines/lightrag/worker.py#L24-L137)
 - [modes.py:19-49](file://deeptutor/services/rag/pipelines/modes.py#L19-L49)
 
 ## 架构总览
-LightRAG 管道通过“解析层 → 注入 LightRAG → 混合检索 → 合成回答”的流程工作。检索模式由 modes 解析，查询参数来自配置；存储层保证版本隔离与就绪判定。
+LightRAG 管道通过"解析层 → Worker隔离 → 注入 LightRAG → 混合检索 → 合成回答"的流程工作。**关键改进**：索引操作现在在专用Worker线程中执行，避免阻塞主服务的事件循环。检索模式由 modes 解析，查询参数来自配置；存储层保证版本隔离与就绪判定。
 
 ```mermaid
 sequenceDiagram
 participant U as "调用方"
 participant PL as "LightRagPipeline"
+participant W as "Worker进程"
 participant MS as "Modes"
 participant EN as "Engine"
 participant ST as "Storage"
@@ -97,15 +114,53 @@ PL->>EN : query(question, mode=resolved_mode)
 EN-->>PL : answer
 PL-->>U : {answer, provider="lightrag", mode}
 end
+Note over W : 索引操作在专用Worker线程中执行
+PL->>W : _run_indexing(file_paths)
+W->>EN : build_rag(working_dir, io_bridge)
+W->>EN : insert(content_list)
+W-->>PL : indexing complete
 ```
 
 **图表来源**
-- [pipeline.py:186-221](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L186-L221)
-- [modes.py:19-49](file://deeptutor/services/rag/pipelines/modes.py#L19-L49)
-- [engine.py:84-103](file://deeptutor/services/rag/pipelines/lightrag/engine.py#L84-L103)
+- [pipeline.py:128-153](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L128-L153)
+- [pipeline.py:157-191](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L157-L191)
+- [worker.py:92-137](file://deeptutor/services/rag/pipelines/lightrag/worker.py#L92-L137)
+- [engine.py:34-60](file://deeptutor/services/rag/pipelines/lightrag/engine.py#L34-L60)
 - [storage.py:49-68](file://deeptutor/services/rag/pipelines/lightrag/storage.py#L49-L68)
 
 ## 详细组件分析
+
+### Worker进程隔离机制
+**新增功能**：为防止RAG-Anything的同步图合并操作阻塞主服务的事件循环，引入了专门的Worker进程隔离机制。
+
+- **Worker线程**：每个索引操作在独立的线程中运行，拥有自己的事件循环
+- **OwnerLoopBridge**：提供安全的方式从Worker线程访问主服务的异步资源
+- **上下文传播**：保持请求级别的上下文变量在工作线程中可用
+- **优雅取消**：支持请求取消时的协调停止，避免资源泄漏
+
+```mermaid
+flowchart TD
+A["主服务事件循环"] --> B["LightRagPipeline._run_indexing"]
+B --> C["run_in_worker_loop(job)"]
+C --> D["创建Worker线程"]
+D --> E["Worker事件循环"]
+E --> F["执行索引作业"]
+F --> G{"需要访问主服务?"}
+G --> |是| H["OwnerLoopBridge.run()"]
+G --> |否| I["继续索引操作"]
+H --> J["在主事件循环执行"]
+J --> K["返回结果到Worker"]
+K --> F
+```
+
+**图表来源**
+- [pipeline.py:128-153](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L128-L153)
+- [worker.py:92-137](file://deeptutor/services/rag/pipelines/lightrag/worker.py#L92-L137)
+- [worker.py:24-89](file://deeptutor/services/rag/pipelines/lightrag/worker.py#L24-L89)
+
+**章节来源**
+- [worker.py:1-138](file://deeptutor/services/rag/pipelines/lightrag/worker.py#L1-L138)
+- [pipeline.py:128-153](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L128-L153)
 
 ### 混合检索策略与优化
 - 检索模式：支持 naive/local/global/hybrid/mix，默认 hybrid（图+向量），兼顾精确与召回。
@@ -129,35 +184,39 @@ Result --> |否| Cast["转为字符串返回"]
 **图表来源**
 - [modes.py:19-49](file://deeptutor/services/rag/pipelines/modes.py#L19-L49)
 - [config.py:66-83](file://deeptutor/services/rag/pipelines/lightrag/config.py#L66-L83)
-- [engine.py:84-103](file://deeptutor/services/rag/pipelines/lightrag/engine.py#L84-L103)
+- [engine.py:86-105](file://deeptutor/services/rag/pipelines/lightrag/engine.py#L86-L105)
 
 **章节来源**
 - [modes.py:19-49](file://deeptutor/services/rag/pipelines/modes.py#L19-L49)
 - [config.py:66-83](file://deeptutor/services/rag/pipelines/lightrag/config.py#L66-L83)
-- [engine.py:84-103](file://deeptutor/services/rag/pipelines/lightrag/engine.py#L84-L103)
+- [engine.py:86-105](file://deeptutor/services/rag/pipelines/lightrag/engine.py#L86-L105)
 
 ### 轻量级知识图谱的构建与维护
 - 构建：通过解析层产出 content_list（含文本/多模态块），调用 insert_content_list 注入 LightRAG；LightRAG 内部会构建 chunk/entity/relation 图与向量索引。
 - 就绪判定：当存在向量/KV 文件或文档状态显示成功时，认为索引已就绪；否则视为失败并清理临时版本目录。
 - 维护：add_documents 支持增量更新；delete 直接删除 KB 目录；write_meta 写入 meta.json 以标记版本就绪。
+- **Worker隔离**：所有索引操作现在在专用Worker线程中执行，避免阻塞主服务。
 
 ```mermaid
 flowchart TD
-A["解析得到content_list"] --> B["insert_content_list(doc_id, file_path)"]
-B --> C{"LightRAG输出vdb/kv/graph?"}
-C --> |是| D["has_output=True"]
-C --> |否| E["failure_summary()收集错误"]
-D --> F["write_meta()标记就绪"]
-E --> G["清理失败版本目录"]
+A["解析得到content_list"] --> B["Worker线程中执行"]
+B --> C["insert_content_list(doc_id, file_path)"]
+C --> D{"LightRAG输出vdb/kv/graph?"}
+D --> |是| E["has_output=True"]
+D --> |否| F["failure_summary()收集错误"]
+E --> G["write_meta()标记就绪"]
+F --> H["清理失败版本目录"]
 ```
 
 **图表来源**
-- [pipeline.py:75-111](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L75-L111)
+- [pipeline.py:78-126](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L78-L126)
+- [pipeline.py:128-153](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L128-L153)
 - [storage.py:49-113](file://deeptutor/services/rag/pipelines/lightrag/storage.py#L49-L113)
 - [storage.py:145-166](file://deeptutor/services/rag/pipelines/lightrag/storage.py#L145-L166)
 
 **章节来源**
-- [pipeline.py:75-111](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L75-L111)
+- [pipeline.py:78-126](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L78-L126)
+- [pipeline.py:128-153](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L128-L153)
 - [storage.py:49-113](file://deeptutor/services/rag/pipelines/lightrag/storage.py#L49-L113)
 - [storage.py:145-166](file://deeptutor/services/rag/pipelines/lightrag/storage.py#L145-L166)
 
@@ -174,16 +233,18 @@ E --> G["清理失败版本目录"]
   - 检索范式：LightRAG 以图为核心，支持 local/global/hybrid/mix 等多模式；LlamaIndex 通常以向量为主，辅以关键词或重排。
   - 注入方式：LightRAG 接收预解析的 content_list，避免重复解析；LlamaIndex 通常自行加载/切分文档。
   - 存储形态：LightRAG 将 KV、向量与图同目录管理；LlamaIndex 依赖外部向量库与可选图存储。
+  - **Worker隔离**：LightRAG 现在使用专用Worker线程处理索引，提供更好的并发性能。
 - 优势场景
   - 需要强关系推理与跨实体关联的场景（如概念间关系、步骤链）。
   - 多模态内容（图文混排）需保持上下文一致性的知识库。
   - 希望以 hybrid 模式平衡召回与精度的通用问答。
+  - **高并发场景**：Worker隔离确保大量索引操作不会阻塞API响应。
 
 [本节为概念性对比，不直接分析具体文件]
 
 ## 依赖关系分析
 - 可选依赖：LightRAG/RAG-Anything 为可选安装；不可用时提供明确错误提示与 UI 隐藏逻辑。
-- 内部耦合：pipeline 依赖 engine、storage、modes；engine 依赖 config；config 仅在构造时引入外部库，降低启动开销。
+- 内部耦合：pipeline 依赖 engine、storage、modes、**worker**；engine 依赖 config、**worker**；config 仅在构造时引入外部库，降低启动开销。
 - 外部集成：统一 LLM/视觉/嵌入客户端，嵌入维度与 token 上限由配置决定。
 
 ```mermaid
@@ -191,19 +252,24 @@ graph LR
 PIPE["pipeline.py"] --> ENG["engine.py"]
 PIPE --> STO["storage.py"]
 PIPE --> MOD["modes.py"]
+PIPE --> WRK["worker.py"]
 ENG --> CFG["config.py"]
+ENG --> WRK
 CFG --> EXT["raganything/lightrag (可选)"]
+WRK --> PIPE
 ```
 
 **图表来源**
-- [pipeline.py:40-245](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L40-L245)
-- [engine.py:21-28](file://deeptutor/services/rag/pipelines/lightrag/engine.py#L21-L28)
+- [pipeline.py:34-36](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L34-L36)
+- [engine.py:21-29](file://deeptutor/services/rag/pipelines/lightrag/engine.py#L21-L29)
 - [config.py:47-54](file://deeptutor/services/rag/pipelines/lightrag/config.py#L47-L54)
+- [worker.py:1-20](file://deeptutor/services/rag/pipelines/lightrag/worker.py#L1-L20)
 
 **章节来源**
-- [pipeline.py:40-245](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L40-L245)
-- [engine.py:21-28](file://deeptutor/services/rag/pipelines/lightrag/engine.py#L21-L28)
+- [pipeline.py:34-36](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L34-L36)
+- [engine.py:21-29](file://deeptutor/services/rag/pipelines/lightrag/engine.py#L21-L29)
 - [config.py:47-54](file://deeptutor/services/rag/pipelines/lightrag/config.py#L47-L54)
+- [worker.py:1-20](file://deeptutor/services/rag/pipelines/lightrag/worker.py#L1-L20)
 
 ## 性能与基准
 - 当前仓库未包含针对 LightRAG 的独立基准脚本或结果表。建议在实际环境中按以下维度评估：
@@ -215,24 +281,27 @@ CFG --> EXT["raganything/lightrag (可选)"]
   - 调整 top_k 与 response_type 以平衡速度与质量。
   - 选择合适的检索模式（hybrid 一般更稳健）。
   - 监控嵌入维度与模型一致性，避免维度不匹配导致静默失败。
+  - **利用Worker隔离**：在高并发场景下，Worker隔离可以显著提升整体吞吐量，避免索引操作阻塞API响应。
 
 [本节提供通用指导，不包含具体文件分析]
 
 ## 故障排查指南
-- 未安装 LightRAG：search/initialize 会抛出“未安装”的错误类型，需在环境安装可选依赖。
+- 未安装 LightRAG：search/initialize 会抛出"未安装"的错误类型，需在环境安装可选依赖。
 - 无索引：search 返回 needs_reindex=true，需先执行 initialize/add_documents。
 - 解析失败：parse 异常会被记录并跳过，最终可能因无有效文档而失败；检查日志与 content_list 是否为空。
 - 文档处理失败：storage.failure_summary 可汇总最近失败原因；document_error 可定位单个 doc_id 的错误信息。
 - 初始化检查：build_rag 会跳过 RAG-Anything 的默认解析器安装检查，避免无关依赖导致的硬失败。
+- **Worker相关问题**：如果遇到Worker线程异常，检查OwnerLoopBridge的使用是否正确，确保网络调用通过bridge.run()执行。
 
 **章节来源**
-- [pipeline.py:49-74](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L49-L74)
-- [pipeline.py:115-182](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L115-L182)
+- [pipeline.py:52-57](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L52-L57)
+- [pipeline.py:157-191](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L157-L191)
 - [storage.py:92-129](file://deeptutor/services/rag/pipelines/lightrag/storage.py#L92-L129)
-- [engine.py:33-58](file://deeptutor/services/rag/pipelines/lightrag/engine.py#L33-L58)
+- [engine.py:34-60](file://deeptutor/services/rag/pipelines/lightrag/engine.py#L34-L60)
+- [worker.py:38-49](file://deeptutor/services/rag/pipelines/lightrag/worker.py#L38-L49)
 
 ## 结论
-LightRAG 管道通过图与向量的混合检索、版本化存储与健壮的错误处理，提供了稳定且可扩展的知识问答能力。其设计强调解耦与可插拔：解析、模型与存储均通过适配层接入，便于在不同部署环境下灵活配置与演进。对于需要关系推理与多模态一致性的场景，LightRAG 具有明显优势。
+LightRAG 管道通过图与向量的混合检索、版本化存储与健壮的错误处理，提供了稳定且可扩展的知识问答能力。**最新改进**：Worker进程隔离机制确保了索引操作不会阻塞主服务的事件循环，显著提升了系统的并发性能和响应性。其设计强调解耦与可插拔：解析、模型与存储均通过适配层接入，便于在不同部署环境下灵活配置与演进。对于需要关系推理与多模态一致性的场景，LightRAG 具有明显优势。
 
 [本节为总结性内容，不包含具体文件分析]
 
@@ -259,6 +328,7 @@ LightRAG 管道通过图与向量的混合检索、版本化存储与健壮的�
   - 注入数据：LightRAG 使用预解析 content_list；LlamaIndex 通常自行加载/切分。
   - 检索模式：LightRAG 提供多种图/向量组合模式；LlamaIndex 多以向量为主。
   - 存储形态：LightRAG 将 KV/向量/图置于同一版本目录；LlamaIndex 依赖外部存储。
+  - **Worker隔离**：LightRAG 现在使用专用Worker线程处理索引，提供更好的并发性能。
 - 切换建议
   - 保留现有解析产物（content_list），直接替换检索后端。
   - 将检索模式从向量优先调整为 hybrid/mix，观察效果变化。
@@ -278,11 +348,13 @@ LightRAG 管道通过图与向量的混合检索、版本化存储与健壮的�
 - 验证
   - 检查 storage.has_output 确认索引就绪。
   - 使用 failure_summary/document_error 排查文档级错误。
+  - **Worker验证**：确认索引操作在专用Worker线程中执行，不影响主服务响应。
 
 **章节来源**
-- [pipeline.py:115-182](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L115-L182)
-- [engine.py:84-103](file://deeptutor/services/rag/pipelines/lightrag/engine.py#L84-L103)
+- [pipeline.py:157-239](file://deeptutor/services/rag/pipelines/lightrag/pipeline.py#L157-L239)
+- [engine.py:86-105](file://deeptutor/services/rag/pipelines/lightrag/engine.py#L86-L105)
 - [storage.py:49-113](file://deeptutor/services/rag/pipelines/lightrag/storage.py#L49-L113)
+- [worker.py:92-137](file://deeptutor/services/rag/pipelines/lightrag/worker.py#L92-L137)
 
 ### 行为验证（测试用例参考）
 - 模式归一化：空/无效输入回退到 hybrid。
@@ -290,6 +362,7 @@ LightRAG 管道通过图与向量的混合检索、版本化存储与健壮的�
 - LLM/视觉适配：保留 messages，丢弃 LightRAG 内部参数。
 - 初始化检查：跳过不必要的解析器安装检查。
 - 生命周期：无内容返回 false；失败清理版本目录；search 在未就绪时返回 needs_reindex。
+- **Worker隔离验证**：确认索引操作在独立线程中执行，主服务事件循环保持响应。
 
 **章节来源**
 - [test_lightrag_pipeline.py:56-70](file://tests/services/rag/test_lightrag_pipeline.py#L56-L70)
@@ -297,3 +370,4 @@ LightRAG 管道通过图与向量的混合检索、版本化存储与健壮的�
 - [test_lightrag_pipeline.py:232-297](file://tests/services/rag/test_lightrag_pipeline.py#L232-L297)
 - [test_lightrag_pipeline.py:299-373](file://tests/services/rag/test_lightrag_pipeline.py#L299-L373)
 - [test_lightrag_pipeline.py:436-587](file://tests/services/rag/test_lightrag_pipeline.py#L436-L587)
+- [test_lightrag_pipeline.py:455-571](file://tests/services/rag/test_lightrag_pipeline.py#L455-L571)

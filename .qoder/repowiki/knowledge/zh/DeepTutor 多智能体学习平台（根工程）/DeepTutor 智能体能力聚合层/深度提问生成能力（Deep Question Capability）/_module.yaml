@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: agents/question
-title: 深度提问生成能力（Deep Question Capability）
-scope:
-    - deeptutor/agents/question/
-source_files: []
-depends_on: []
-related_to:
-    - path: learning

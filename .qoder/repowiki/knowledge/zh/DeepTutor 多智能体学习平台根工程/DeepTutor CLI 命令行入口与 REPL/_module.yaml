@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: cli
+title: DeepTutor CLI 命令行入口与 REPL
+scope:
+    - deeptutor_cli/
+source_files: []
+depends_on: []
+related_to: []

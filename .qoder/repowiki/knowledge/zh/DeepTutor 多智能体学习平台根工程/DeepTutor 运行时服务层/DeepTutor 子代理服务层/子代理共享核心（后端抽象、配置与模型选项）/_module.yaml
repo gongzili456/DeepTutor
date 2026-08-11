@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: services/subagent/shared_core
+title: 子代理共享核心（后端抽象、配置与模型选项）
+scope:
+    - deeptutor/services/subagent/base.py
+    - deeptutor/services/subagent/config.py
+    - deeptutor/services/subagent/models.py
+source_files: []
+depends_on: []
+related_to:
+    - path: services/subagent/other_agents

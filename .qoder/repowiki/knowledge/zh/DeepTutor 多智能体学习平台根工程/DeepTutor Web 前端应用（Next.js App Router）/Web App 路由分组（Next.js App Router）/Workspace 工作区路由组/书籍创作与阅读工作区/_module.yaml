@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: web_frontend/app_routes/workspace_routes/book
+title: 书籍创作与阅读工作区
+scope:
+    - web/app/(workspace)/book/
+source_files: []
+depends_on: []
+related_to: []

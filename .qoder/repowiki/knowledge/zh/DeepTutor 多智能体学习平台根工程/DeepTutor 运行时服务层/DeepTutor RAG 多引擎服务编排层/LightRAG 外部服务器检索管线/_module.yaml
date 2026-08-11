@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: services/rag/lightrag_server_pipeline
+title: LightRAG 外部服务器检索管线
+scope:
+    - deeptutor/services/rag/pipelines/lightrag_server/
+source_files: []
+depends_on: []
+related_to: []

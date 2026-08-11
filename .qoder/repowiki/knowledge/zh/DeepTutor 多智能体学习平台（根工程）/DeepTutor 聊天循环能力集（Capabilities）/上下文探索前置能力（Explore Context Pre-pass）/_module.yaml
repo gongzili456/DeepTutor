@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: capabilities/explore_context
-title: 上下文探索前置能力（Explore Context Pre-pass）
-scope:
-    - deeptutor/capabilities/explore_context/
-source_files: []
-depends_on: []
-related_to:
-    - path: knowledge

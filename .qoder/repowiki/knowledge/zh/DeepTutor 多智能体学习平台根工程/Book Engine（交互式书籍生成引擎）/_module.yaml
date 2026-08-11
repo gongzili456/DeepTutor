@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: book_engine
+title: Book Engine（交互式书籍生成引擎）
+scope:
+    - deeptutor/book/
+source_files: []
+depends_on: []
+related_to: []

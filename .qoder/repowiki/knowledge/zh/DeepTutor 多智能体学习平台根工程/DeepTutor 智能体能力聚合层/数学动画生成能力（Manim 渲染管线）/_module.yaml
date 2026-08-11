@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: agents/math_animator
+title: 数学动画生成能力（Manim 渲染管线）
+scope:
+    - deeptutor/agents/math_animator/
+source_files: []
+depends_on: []
+related_to: []

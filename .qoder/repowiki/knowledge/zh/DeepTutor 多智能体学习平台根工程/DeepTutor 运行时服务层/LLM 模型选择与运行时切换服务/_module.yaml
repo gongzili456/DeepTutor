@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: services/model_selection
+title: LLM 模型选择与运行时切换服务
+scope:
+    - deeptutor/services/model_selection/
+source_files: []
+depends_on: []
+related_to: []

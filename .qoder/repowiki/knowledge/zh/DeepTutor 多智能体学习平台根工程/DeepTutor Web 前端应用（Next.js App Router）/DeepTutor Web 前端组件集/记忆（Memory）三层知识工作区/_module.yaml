@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: web_frontend/components/memory
+title: 记忆（Memory）三层知识工作区
+scope:
+    - web/components/memory/
+source_files: []
+depends_on: []
+related_to: []

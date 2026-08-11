@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: web_frontend/components/partners
+title: 合作伙伴（Partner）前端组件集
+scope:
+    - web/components/partners/
+source_files: []
+depends_on: []
+related_to:
+    - path: api

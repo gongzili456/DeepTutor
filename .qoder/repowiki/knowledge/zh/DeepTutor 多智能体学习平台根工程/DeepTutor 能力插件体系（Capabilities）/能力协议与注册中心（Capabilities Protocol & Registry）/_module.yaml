@@ -1,0 +1,16 @@
+schema_version: 1
+module_path: capabilities/shared_infrastructure
+title: 能力协议与注册中心（Capabilities Protocol & Registry）
+scope:
+    - deeptutor/capabilities/__init__.py
+    - deeptutor/capabilities/protocol.py
+    - deeptutor/capabilities/registry.py
+source_files: []
+depends_on: []
+related_to:
+    - path: agents/question
+    - path: capabilities/explore_context
+    - path: capabilities/mastery
+    - path: capabilities/obsidian
+    - path: capabilities/solve
+    - path: capabilities/subagent

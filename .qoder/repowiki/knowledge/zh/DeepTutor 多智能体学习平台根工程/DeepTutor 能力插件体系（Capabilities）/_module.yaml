@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: capabilities
+title: DeepTutor 能力插件体系（Capabilities）
+scope:
+    - deeptutor/capabilities/
+source_files: []
+depends_on: []
+related_to: []

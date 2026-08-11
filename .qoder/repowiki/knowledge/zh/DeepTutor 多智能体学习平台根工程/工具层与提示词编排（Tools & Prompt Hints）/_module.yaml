@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: tools
+title: 工具层与提示词编排（Tools & Prompt Hints）
+scope:
+    - deeptutor/tools/
+source_files: []
+depends_on: []
+related_to: []

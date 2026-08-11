@@ -1,0 +1,32 @@
+schema_version: 1
+module_path: ""
+title: DeepTutor 多智能体学习平台根工程
+scope:
+    - README.md
+    - CONTRIBUTING.md
+    - .gitignore
+    - pyproject.toml
+    - requirements.txt
+    - compose.yaml
+    - Dockerfile
+    - Dockerfile.runner
+    - AGENTS.md
+    - SKILL.md
+    - .dockerignore
+    - .env.example
+    - .gitattributes
+    - .pre-commit-config.yaml
+    - .secrets.baseline
+    - CITATION.cff
+    - CONTAINERIZATION.md
+    - Communication.md
+    - LICENSE
+    - MANIFEST.in
+    - THIRD_PARTY_NOTICES.md
+    - compose.codex-oauth.yaml
+    - docker-compose.dev.yml
+    - docker-compose.ghcr.yml
+    - docker-compose.yml
+source_files: []
+depends_on: []
+related_to: []
