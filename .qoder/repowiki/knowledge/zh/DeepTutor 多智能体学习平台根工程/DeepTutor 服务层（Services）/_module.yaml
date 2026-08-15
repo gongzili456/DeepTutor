@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: services
-title: DeepTutor 运行时服务层
+title: DeepTutor 服务层（Services）
 scope:
     - deeptutor/services/
 source_files: []

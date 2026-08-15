@@ -12,6 +12,13 @@
 - [mcp-api.ts](file://web/lib/mcp-api.ts)
 </cite>
 
+## 更新摘要
+**变更内容**
+- 增强了MCP服务器管理的凭据轮换重连支持
+- 改进了传输故障报告机制
+- 修复了认证指纹识别，使用物化配置而非存储引用
+- 优化了连接管理器的错误处理和重试逻辑
+
 ## 目录
 1. [简介](#简介)
 2. [项目结构](#项目结构)
@@ -28,7 +35,7 @@
 本文件面向在DeepTutor中集成MCP（Model Context Protocol）服务器的工程实践，覆盖协议概念、服务器发现与能力协商、消息传递机制、本地与远程服务器配置、工具定义/注册/调用流程、认证机制（OAuth/API密钥）、常见集成场景、开发最佳实践、性能监控与错误处理策略，以及故障诊断方法。文档中的实现细节均基于仓库源码，确保可追溯与可验证。
 
 ## 项目结构
-DeepTutor对MCP的集成由“后端服务层 + API路由 + 前端API封装”三部分构成：
+DeepTutor对MCP的集成由"后端服务层 + API路由 + 前端API封装"三部分构成：
 - 后端服务层：连接管理、配置持久化、网络防护、OAuth授权、工具适配器与调度。
 - API路由：管理员全局配置与用户自管配置的REST接口，含测试、目录安装、OAuth回调等。
 - 前端API封装：类型定义、状态归一化、与服务端交互的函数集合。
@@ -58,7 +65,7 @@ Tools --> Agent["智能体管线<br/>agents/chat/agentic_pipeline.py"]
 章节来源
 - [mcp-settings.py:1-134](file://deeptutor/api/routers/mcp_settings.py#L1-L134)
 - [space_mcp.py:1-461](file://deeptutor/api/routers/space_mcp.py#L1-L461)
-- [manager.py:1-863](file://deeptutor/services/mcp/manager.py#L1-L863)
+- [manager.py:1-1023](file://deeptutor/services/mcp/manager.py#L1-L1023)
 - [config.py:1-163](file://deeptutor/services/mcp/config.py#L1-L163)
 - [oauth.py:1-439](file://deeptutor/services/mcp/oauth.py#L1-L439)
 - [network.py:1-122](file://deeptutor/services/mcp/network.py#L1-L122)
@@ -131,7 +138,9 @@ Agent-->>User : 返回结果
   - 进度上报：progress回调映射为trace事件，便于长任务可视化。
 - 关键行为：
   - 连接任务独立于事件循环任务，使用AsyncExitStack管理资源。
-  - 非交互OAuth：后台重连遇到需授权时抛出AuthorizationRequired，UI显示“需要授权”。
+  - 非交互OAuth：后台重连遇到需授权时抛出AuthorizationRequired，UI显示"需要授权"。
+
+**更新** 增强了凭据轮换重连支持，当检测到配置签名变化时会主动断开并重连服务器，确保新凭据立即生效。
 
 ```mermaid
 classDiagram
@@ -149,6 +158,8 @@ class MCPConnectionManager {
 -_disconnect(conn)
 -_register_adapters(conn)
 -_unregister_adapters(conn)
+-_signature(cfg, owner)
+-_materialize(cfg, owner)
 }
 class MCPToolAdapter {
 +get_definition()
@@ -180,7 +191,7 @@ MCPConnectionManager --> MCPToolAdapter : "创建/注册"
 - [manager.py:89-155](file://deeptutor/services/mcp/manager.py#L89-L155)
 
 章节来源
-- [manager.py:1-863](file://deeptutor/services/mcp/manager.py#L1-L863)
+- [manager.py:1-1023](file://deeptutor/services/mcp/manager.py#L1-L1023)
 
 ### 配置模型与持久化（MCPServerConfig/MCPConfig）
 - 字段说明：
@@ -193,6 +204,8 @@ MCPConnectionManager --> MCPToolAdapter : "创建/注册"
 - 持久化：
   - 管理员配置保存在settings目录下的mcp.json，保存采用原子写入（临时文件+fsync+替换）。
   - 名称校验正则限制，防止非法字符。
+
+**更新** 改进了认证指纹识别机制，现在使用物化配置而非存储引用来检测凭据轮换，确保配置变更能够正确触发重连。
 
 ```mermaid
 flowchart TD
@@ -222,7 +235,7 @@ Replace --> End(["完成"])
 - 流程：
   - begin_authorization：发起授权，返回authorize_url给前端跳转。
   - callback：服务端接收code/state，完成授权并刷新token。
-  - 非交互：后台重连若需授权则抛AuthorizationRequired，UI提示“需要授权”。
+  - 非交互：后台重连若需授权则抛AuthorizationRequired，UI提示"需要授权"。
 - 安全：每次重新授权会丢弃旧注册，避免跨同意串用。
 
 ```mermaid
@@ -257,6 +270,8 @@ API-->>UI : 展示结果并关闭窗口
 - 定义：MCP服务器暴露工具名、描述、输入Schema。
 - 注册：连接成功后list_tools，生成MCPToolAdapter，按enabled/disabled过滤，仅部署级服务器注册到全局工具注册表；用户级通过作用域叠加可见。
 - 调用：智能体管线在每轮构建工具视图，按需延迟加载；执行时通过MCPConnectionManager.call_tool转发，支持超时与进度上报。
+
+**更新** 改进了传输故障报告机制，现在能够更准确地识别和报告底层传输错误，提供更清晰的错误信息。
 
 ```mermaid
 sequenceDiagram
@@ -331,7 +346,7 @@ Agent["agentic_pipeline.py"] --> Manager
 - [agentic_pipeline.py:473-528](file://deeptutor/agents/chat/agentic_pipeline.py#L473-L528)
 
 章节来源
-- [manager.py:1-863](file://deeptutor/services/mcp/manager.py#L1-L863)
+- [manager.py:1-1023](file://deeptutor/services/mcp/manager.py#L1-L1023)
 - [space_mcp.py:1-461](file://deeptutor/api/routers/space_mcp.py#L1-L461)
 - [mcp-settings.py:1-134](file://deeptutor/api/routers/mcp_settings.py#L1-L134)
 - [agentic_pipeline.py:459-528](file://deeptutor/agents/chat/agentic_pipeline.py#L459-L528)
@@ -348,12 +363,14 @@ Agent["agentic_pipeline.py"] --> Manager
 - 网络防护：
   - 连接时二次校验URL，防止DNS漂移导致的SSRF风险。
 
+**更新** 增强了凭据轮换时的重连机制，确保配置变更后能够及时检测到并重建连接，提高了系统的可靠性和响应性。
+
 [本节为通用指导，不直接分析具体文件]
 
 ## 故障诊断指南
 - 常见问题定位：
   - 连接失败：查看服务器状态行error字段；检查URL是否被网络防护拒绝；确认DNS解析正常。
-  - 需要授权：状态为needs_auth时，引导用户点击“授权”，完成OAuth回调。
+  - 需要授权：状态为needs_auth时，引导用户点击"授权"，完成OAuth回调。
   - 工具不可用：检查enabled_tools/disabled_tools配置；确认工具名匹配原始名或包装名。
 - 调试步骤：
   - 使用测试接口POST /test验证连通性与工具清单。
@@ -364,13 +381,17 @@ Agent["agentic_pipeline.py"] --> Manager
   - 重置OAuth授权（forget）后重新发起授权流程。
   - 调整tool_timeout或enabled/disabled工具列表。
 
+**更新** 改进了传输故障报告，现在能够提供更详细的错误信息，帮助快速定位问题根源。
+
 章节来源
 - [space_mcp.py:255-284](file://deeptutor/api/routers/space_mcp.py#L255-L284)
 - [manager.py:534-541](file://deeptutor/services/mcp/manager.py#L534-L541)
 - [oauth.py:133-152](file://deeptutor/services/mcp/oauth.py#L133-L152)
 
 ## 结论
-DeepTutor对MCP的集成提供了完整的全栈方案：从连接管理、配置持久化、网络防护、OAuth授权到工具适配与智能体管线集成。通过管理员与用户双视角的配置API，既满足企业级集中管控，又赋予用户自助扩展能力。结合严格的SSRF防护、超时与重试机制、进度上报与错误处理，确保了在生产环境中的稳定性与可观测性。建议在实际部署中遵循最小权限原则，合理配置工具白名单与超时参数，并利用测试接口与日志进行持续验证与排障。
+DeepTutor对MCP的集成提供了完整的全栈方案：从连接管理、配置持久化、网络防护、OAuth授权到工具适配与智能体管线集成。通过管理员与用户双视角的配置API，既满足企业级集中管控，又赋予用户自助扩展能力。结合严格的SSRF防护、超时与重试机制、进度上报与错误处理，确保了在生产环境中的稳定性与可观测性。
+
+**最新更新** 增强了凭据轮换重连支持和改进的传输故障报告机制，进一步提升了系统的可靠性和可维护性。建议在实际部署中遵循最小权限原则，合理配置工具白名单与超时参数，并利用测试接口与日志进行持续验证与排障。
 
 [本节为总结性内容，不直接分析具体文件]
 
@@ -385,6 +406,8 @@ DeepTutor对MCP的集成提供了完整的全栈方案：从连接管理、配�
 - 连接与调用：
   - 连接管理与工具适配器：[manager.py:216-753](file://deeptutor/services/mcp/manager.py#L216-L753)
   - 工具调用与进度上报：[manager.py:404-470](file://deeptutor/services/mcp/manager.py#L404-L470)
+  - 凭据轮换重连支持：[manager.py:567-598](file://deeptutor/services/mcp/manager.py#L567-L598)
+  - 传输故障报告改进：[manager.py:924-946](file://deeptutor/services/mcp/manager.py#L924-L946)
 - 前端API：
   - 类型与操作封装：[mcp-api.ts:1-756](file://web/lib/mcp-api.ts#L1-L756)
 
@@ -392,4 +415,6 @@ DeepTutor对MCP的集成提供了完整的全栈方案：从连接管理、配�
 - [mcp-settings.py:57-133](file://deeptutor/api/routers/mcp_settings.py#L57-L133)
 - [space_mcp.py:92-352](file://deeptutor/api/routers/space_mcp.py#L92-L352)
 - [manager.py:216-753](file://deeptutor/services/mcp/manager.py#L216-L753)
+- [manager.py:567-598](file://deeptutor/services/mcp/manager.py#L567-L598)
+- [manager.py:924-946](file://deeptutor/services/mcp/manager.py#L924-L946)
 - [mcp-api.ts:1-756](file://web/lib/mcp-api.ts#L1-L756)
