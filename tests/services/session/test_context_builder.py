@@ -2,19 +2,29 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from deeptutor.services.prompt import get_prompt_manager
+from deeptutor.services.prompt.language import language_label
 from deeptutor.services.session.context_builder import (
+    MAX_HISTORY_PLAN_TOKENS,
+    MAX_RAW_REBUILD_TOKENS,
+    MAX_SUMMARY_OUTPUT_TOKENS,
     ContextBuilder,
     ContextBuildResult,
+    _ContextSummaryAgent,
     build_history_text,
     count_tokens,
+    extract_ask_user_clarifications,
     format_messages_as_transcript,
     trim_incomplete_tail,
 )
+from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 
 # ---------------------------------------------------------------------------
 # count_tokens
@@ -150,7 +160,12 @@ class TestContextBuilderBudgets:
     def test_history_budget_uses_large_context_model_heuristic(self) -> None:
         builder = ContextBuilder(store=MagicMock(), history_budget_ratio=0.35)
         budget = builder._history_budget(self._make_llm_config(4096, model="gpt-4o-mini"))
-        assert budget == int(65536 * 0.35)
+        assert budget == int(128000 * 0.35)
+
+    def test_history_budget_has_absolute_cap(self) -> None:
+        builder = ContextBuilder(store=MagicMock(), history_budget_ratio=0.35)
+        budget = builder._history_budget(self._make_llm_config(4096, context_window=983_616))
+        assert budget == MAX_HISTORY_PLAN_TOKENS
 
     def test_history_budget_minimum(self) -> None:
         builder = ContextBuilder(store=MagicMock(), history_budget_ratio=0.01)
@@ -165,6 +180,20 @@ class TestContextBuilderBudgets:
         builder = ContextBuilder(store=MagicMock(), summary_target_ratio=0.01)
         assert builder._summary_budget(100) >= 96
 
+    def test_summary_budget_has_absolute_cap(self) -> None:
+        builder = ContextBuilder(store=MagicMock(), summary_target_ratio=0.40)
+        assert builder._summary_budget(MAX_HISTORY_PLAN_TOKENS) == (MAX_SUMMARY_OUTPUT_TOKENS)
+
+    def test_summary_budget_respects_configured_output_limit(self) -> None:
+        builder = ContextBuilder(store=MagicMock(), summary_target_ratio=0.40)
+        cfg = self._make_llm_config(4096, context_window=983_616)
+        assert builder._summary_budget(MAX_HISTORY_PLAN_TOKENS, cfg) == 4096
+
+    def test_summary_budget_can_follow_small_generation_limit(self) -> None:
+        builder = ContextBuilder(store=MagicMock(), summary_target_ratio=0.40)
+        cfg = self._make_llm_config(50, context_window=983_616)
+        assert builder._summary_budget(MAX_HISTORY_PLAN_TOKENS, cfg) == 50
+
     def test_recent_budget(self) -> None:
         builder = ContextBuilder(store=MagicMock(), summary_target_ratio=0.40)
         recent = builder._recent_budget(1000)
@@ -173,6 +202,20 @@ class TestContextBuilderBudgets:
     def test_recent_budget_minimum(self) -> None:
         builder = ContextBuilder(store=MagicMock(), summary_target_ratio=0.99)
         assert builder._recent_budget(200) >= 128
+
+    def test_recent_budget_preserves_headroom_when_summary_is_capped(self) -> None:
+        builder = ContextBuilder(store=MagicMock(), summary_target_ratio=0.40)
+        cfg = self._make_llm_config(4096, context_window=983_616)
+        recent_budget = builder._recent_budget(MAX_HISTORY_PLAN_TOKENS)
+        summary_budget = builder._summary_budget(MAX_HISTORY_PLAN_TOKENS, cfg)
+
+        assert recent_budget == int(MAX_HISTORY_PLAN_TOKENS * 0.60)
+        assert recent_budget + summary_budget < MAX_HISTORY_PLAN_TOKENS
+
+    def test_rebuild_source_budget_has_absolute_cap(self) -> None:
+        builder = ContextBuilder(store=MagicMock())
+        cfg = self._make_llm_config(4096, context_window=983_616)
+        assert builder._rebuild_source_budget(cfg) == MAX_RAW_REBUILD_TOKENS
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +265,58 @@ class TestBuildHistory:
         )
         assert len(history) == 1
 
+    def test_resolved_ask_user_answers_are_rehydrated_as_user_context(self) -> None:
+        before = "I can help, but one detail matters."
+        after = "I adapted the explanation."
+        message = {
+            "role": "assistant",
+            "content": before + after,
+            "metadata": {"provider_response_state": {"reasoning_content": "private reasoning"}},
+            "events": [
+                {
+                    "type": "tool_result",
+                    "metadata": {
+                        "tool_metadata": {
+                            "ask_user": {
+                                "questions": [
+                                    {"id": "level", "prompt": "What have you studied?"},
+                                    {"id": "goal", "prompt": "What is your goal?"},
+                                ]
+                            }
+                        }
+                    },
+                },
+                {
+                    "type": "progress",
+                    "metadata": {
+                        "ask_user_resolved": True,
+                        "assistant_content_offset": len(before),
+                        "answers": [
+                            {"questionId": "level", "text": "High-school calculus"},
+                            {"questionId": "goal", "text": "Understand the intuition"},
+                        ],
+                    },
+                },
+            ],
+        }
+
+        clarification = extract_ask_user_clarifications(message)
+        assert "What have you studied?" in clarification
+        assert "High-school calculus" in clarification
+
+        history = ContextBuilder(store=MagicMock())._build_history("", [message])
+        assert history == [
+            {"role": "assistant", "content": before},
+            {"role": "user", "content": clarification},
+            {
+                "role": "assistant",
+                "content": after,
+                "_provider_response_state": {"reasoning_content": "private reasoning"},
+            },
+        ]
+        transcript = format_messages_as_transcript([message])
+        assert transcript.index(before) < transcript.index(clarification) < transcript.index(after)
+
 
 # ---------------------------------------------------------------------------
 # ContextBuilder._select_recent_messages
@@ -250,6 +345,22 @@ class TestSelectRecentMessages:
         older, recent = builder._select_recent_messages(messages, recent_budget=10)
         assert len(recent) >= 1
         assert len(older) + len(recent) == len(messages)
+
+    def test_budget_includes_private_provider_response_state(self) -> None:
+        builder = ContextBuilder(store=MagicMock())
+        messages = [
+            {
+                "role": "assistant",
+                "content": "short answer",
+                "metadata": {"provider_response_state": {"reasoning_content": "x" * 1000}},
+            },
+            {"role": "user", "content": "new question"},
+        ]
+
+        older, recent = builder._select_recent_messages(messages, recent_budget=100)
+
+        assert older == messages[:1]
+        assert recent == messages[1:]
 
 
 # ---------------------------------------------------------------------------
@@ -328,6 +439,50 @@ class TestContextBuilderBuild:
         assert result.events == []
         store.update_summary.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_large_context_build_uses_capped_plan_with_headroom(self) -> None:
+        store = AsyncMock()
+        store.get_session = AsyncMock(
+            return_value={
+                "id": "s1",
+                "compressed_summary": "",
+                "summary_up_to_msg_id": 0,
+            }
+        )
+        store.get_messages_for_context = AsyncMock(
+            return_value=[
+                {"id": 1, "role": "user", "content": "old turn"},
+                {"id": 2, "role": "assistant", "content": "recent turn"},
+            ]
+        )
+
+        builder = ContextBuilder(store=store)
+        builder._summarize = AsyncMock(return_value=("SUMMARY", []))
+        select_recent = MagicMock(wraps=builder._select_recent_messages)
+        builder._select_recent_messages = select_recent
+        cfg = MagicMock()
+        cfg.max_tokens = 4096
+        cfg.model = "qwen3.8-max"
+        cfg.context_window = 983_616
+
+        def _fake_count_tokens(text: str) -> int:
+            if text in {"old turn", "recent turn"}:
+                return 70_000
+            if "User: old turn" in text and "Assistant: recent turn" in text:
+                return 140_000
+            return 100
+
+        with patch(
+            "deeptutor.services.session.context_builder.count_tokens",
+            side_effect=_fake_count_tokens,
+        ):
+            result = await builder.build(session_id="s1", llm_config=cfg)
+
+        assert result.budget == MAX_HISTORY_PLAN_TOKENS
+        assert builder._summarize.call_args.kwargs["summary_budget"] == 4096
+        assert select_recent.call_args.args[1] == int(MAX_HISTORY_PLAN_TOKENS * 0.60)
+        store.update_summary.assert_awaited_once_with("s1", "SUMMARY", 1)
+
 
 # ---------------------------------------------------------------------------
 # trim_incomplete_tail
@@ -340,6 +495,77 @@ class TestTrimIncompleteTail:
 
     def test_single_line_kept(self) -> None:
         assert trim_incomplete_tail("only one line, keep it") == "only one line, keep it"
+
+
+# ---------------------------------------------------------------------------
+# ContextBuilder._summarize
+# ---------------------------------------------------------------------------
+
+
+class TestContextBuilderSummarize:
+    @pytest.mark.asyncio
+    async def test_target_stays_below_small_output_cap(self) -> None:
+        captured: dict[str, Any] = {}
+
+        async def _stream_llm(**kwargs: Any):
+            captured.update(kwargs)
+            yield "short summary"
+
+        agent = MagicMock()
+        agent.stream_llm = _stream_llm
+        builder = ContextBuilder(store=MagicMock())
+
+        with patch(
+            "deeptutor.services.session.context_builder._ContextSummaryAgent",
+            return_value=agent,
+        ):
+            summary, _events = await builder._summarize(
+                session_id="s1",
+                language="en",
+                source_text="User: hello",
+                summary_budget=50,
+            )
+
+        assert summary == "short summary"
+        assert captured["max_tokens"] == 50
+        assert "under 40 tokens" in captured["user_prompt"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("language", "expected"),
+        [
+            ("ja", "Write the summary itself in 日本語."),
+            ("zh", "摘要正文本身请使用中文（简体）撰写。"),
+        ],
+    )
+    async def test_summary_instruction_names_the_session_language(
+        self, language: str, expected: str
+    ) -> None:
+        captured: dict[str, Any] = {}
+
+        async def _stream_llm(**kwargs: Any):
+            captured.update(kwargs)
+            yield "short summary"
+
+        agent = MagicMock()
+        agent.stream_llm = _stream_llm
+        builder = ContextBuilder(store=MagicMock())
+
+        with patch(
+            "deeptutor.services.session.context_builder._ContextSummaryAgent",
+            return_value=agent,
+        ):
+            await builder._summarize(
+                session_id="s1",
+                language=language,
+                source_text="User: hello",
+                summary_budget=50,
+            )
+
+        # The summary is replayed as a system row on every later turn, so an
+        # instruction that never says which language to write in drags the
+        # answer back to the prompt's own language (#1511).
+        assert expected in captured["system_prompt"]
 
 
 # ---------------------------------------------------------------------------
@@ -469,3 +695,126 @@ class TestContextBuilderSummarizePaths:
         assert result.conversation_summary == ""
         assert all(m["role"] != "system" for m in result.conversation_history)
         store.update_summary.assert_not_called()
+
+
+async def _seed_compaction_session(
+    store: SQLiteSessionStore,
+) -> tuple[str, int, list[dict[str, Any]]]:
+    session = await store.create_session()
+    session_id = session["id"]
+    await store.add_message(session_id, "user", "Original question [doc:7]")
+    watermark = await store.add_message(session_id, "assistant", "Original answer")
+    await store.update_summary(session_id, "PRIOR SUMMARY [doc:7]", watermark)
+    await store.add_message(session_id, "user", "RETRY_MARKER [doc:9] " + "material " * 500)
+    await store.add_message(
+        session_id,
+        "assistant",
+        "Recent answer",
+        metadata={"provider_response_state": {"reasoning_content": "private replay state"}},
+    )
+    return session_id, watermark, await store.get_messages_for_context(session_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("language", ["en", "zh", "ja", "zh-tw"])
+async def test_compaction_uses_discovered_prompt_and_preserves_sources_and_private_state(
+    sqlite_store: SQLiteSessionStore,
+    monkeypatch: pytest.MonkeyPatch,
+    language: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session_id, _watermark, original = await _seed_compaction_session(sqlite_store)
+    captured: dict[str, Any] = {}
+    summary = "# Goals\nRetain the explanation [doc:7] [doc:9]."
+    monkeypatch.setattr("deeptutor.agents.base_agent.get_agent_params", lambda _module: {})
+
+    async def stream(_self: _ContextSummaryAgent, **kwargs: Any) -> AsyncIterator[str]:
+        captured.update(kwargs)
+        yield f"<think>private drafting notes</think>\n{summary}"
+
+    monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
+    manager = get_prompt_manager()
+    manager.clear_cache()
+    result = await ContextBuilder(sqlite_store).build(
+        session_id=session_id, llm_config=_small_window_cfg(), language=language
+    )
+
+    prompt = manager.load_prompts("chat", "context_summary_agent", language)["system"]
+    assert (
+        captured["system_prompt"]
+        == prompt.format(summary_language=language_label(language)).strip()
+    )
+    assert language_label(language) in captured["system_prompt"]
+    assert "[doc:7]" in captured["user_prompt"]
+    assert "[doc:9]" in captured["user_prompt"]
+    assert "private replay state" not in captured["user_prompt"]
+    assert result.conversation_summary == summary
+    assert result.conversation_history[-1]["_provider_response_state"] == {
+        "reasoning_content": "private replay state"
+    }
+    session = await sqlite_store.get_session(session_id)
+    assert session["compressed_summary"] == summary
+    assert session["summary_up_to_msg_id"] == original[-2]["id"]
+    assert await sqlite_store.get_messages_for_context(session_id) == original
+    assert "No prompt file found" not in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure", ["missing_prompt", "empty", "reasoning_only", "exception", "partial_error"]
+)
+async def test_failed_compaction_preserves_durable_history_and_retries(
+    sqlite_store: SQLiteSessionStore,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    failure: str,
+) -> None:
+    session_id, watermark, original = await _seed_compaction_session(sqlite_store)
+    monkeypatch.setattr("deeptutor.agents.base_agent.get_agent_params", lambda _module: {})
+    manager = get_prompt_manager()
+    manager.clear_cache()
+
+    async def stream(_self: _ContextSummaryAgent, **kwargs: Any) -> AsyncIterator[str]:
+        if failure == "missing_prompt":
+            pytest.fail("A missing summary prompt must prevent the request")
+        if failure == "exception":
+            yield "partial summary"
+            raise RuntimeError("stream interrupted")
+        if failure == "partial_error":
+            yield "partial summary"
+            kwargs["outcome"].finish_reason = "error"
+        elif failure == "reasoning_only":
+            yield "<think>private drafting notes</think>"
+        else:
+            yield " \n "
+
+    with monkeypatch.context() as missing:
+        missing.setattr(_ContextSummaryAgent, "stream_llm", stream)
+        if failure == "missing_prompt":
+            missing.setattr(manager, "_candidate_prompt_dirs", lambda _module: [tmp_path])
+        result = await ContextBuilder(sqlite_store).build(
+            session_id=session_id, llm_config=_small_window_cfg()
+        )
+
+    session = await sqlite_store.get_session(session_id)
+    assert session["compressed_summary"] == "PRIOR SUMMARY [doc:7]"
+    assert session["summary_up_to_msg_id"] == watermark
+    assert result.conversation_summary == "PRIOR SUMMARY [doc:7]"
+    assert result.conversation_history[-1]["content"] == "Recent answer"
+    assert result.conversation_history[-1]["_provider_response_state"] == {
+        "reasoning_content": "private replay state"
+    }
+    assert await sqlite_store.get_messages_for_context(session_id) == original
+
+    async def retry(_self: _ContextSummaryAgent, **kwargs: Any) -> AsyncIterator[str]:
+        assert "RETRY_MARKER" in kwargs["user_prompt"]
+        yield "Recovered summary [doc:7] [doc:9]"
+
+    monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", retry)
+    retried = await ContextBuilder(sqlite_store).build(
+        session_id=session_id, llm_config=_small_window_cfg()
+    )
+    assert retried.conversation_summary == "Recovered summary [doc:7] [doc:9]"
+    session = await sqlite_store.get_session(session_id)
+    assert session["summary_up_to_msg_id"] == original[-2]["id"]
+    assert await sqlite_store.get_messages_for_context(session_id) == original

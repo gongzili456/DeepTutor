@@ -15,7 +15,10 @@ import importlib.util
 import logging
 from typing import Any
 
+from deeptutor.services.keypool import primary_api_key
+
 from ..models import BlockType, SourceAnchor
+from ._prompts import get_book_prompt, load_book_prompts
 from .base import BlockContext, BlockGenerator, GenerationFailure
 
 logger = logging.getLogger(__name__)
@@ -27,6 +30,9 @@ class AnimationGenerator(BlockGenerator):
     async def _generate(
         self, ctx: BlockContext
     ) -> tuple[dict[str, Any], list[SourceAnchor], dict[str, Any]]:
+        from deeptutor.modules.catalog import require_module
+
+        require_module("renderer-manim")
         if importlib.util.find_spec("manim") is None:
             raise GenerationFailure(
                 "AnimationGenerator requires the optional math-animator extras. "
@@ -41,21 +47,28 @@ class AnimationGenerator(BlockGenerator):
         focus = str(params.get("focus") or "")
         quality = str(params.get("quality") or "medium")
         style_hint = str(params.get("style_hint") or "")
+        prompts = load_book_prompts("animation", ctx.language)
 
         history_lines: list[str] = []
         if chapter_summary:
-            history_lines.append(f"Chapter summary: {chapter_summary}")
+            history_lines.append(
+                get_book_prompt(prompts, "context_summary")
+                .strip()
+                .format(chapter_summary=chapter_summary)
+            )
         if objectives:
-            history_lines.append("Learning objectives:")
+            history_lines.append(get_book_prompt(prompts, "context_objectives").strip())
             for obj in objectives:
                 history_lines.append(f"- {obj}")
         history_context = "\n".join(history_lines)
 
-        focus_clause = f" focusing on {focus}" if focus else ""
+        focus_clause = (
+            get_book_prompt(prompts, "focus_clause").rstrip().format(focus=focus) if focus else ""
+        )
         user_input = (
-            f"Create a short Manim animation that walks through the core "
-            f'derivation of "{chapter_title}"{focus_clause}. Aim for a '
-            "clear, step-by-step explanation a learner can follow."
+            get_book_prompt(prompts, "brief")
+            .strip()
+            .format(chapter_title=chapter_title, focus_clause=focus_clause)
         )
 
         try:
@@ -70,12 +83,14 @@ class AnimationGenerator(BlockGenerator):
                 output_mode="video",
                 quality=quality if quality in ("low", "medium", "high") else "medium",
                 style_hint=style_hint,
+                enable_visual_review=params.get("enable_visual_review", False),
             )
             pipeline = MathAnimatorPipeline(
-                api_key=llm_config.api_key,
+                api_key=primary_api_key(llm_config.api_key),
                 base_url=llm_config.base_url,
                 api_version=llm_config.api_version,
                 language=ctx.language,
+                enable_visual_review=request_config.enable_visual_review,
             )
             turn_id = f"book-{ctx.book_id}-{ctx.block.id}"
             result = await pipeline.run(
@@ -92,6 +107,7 @@ class AnimationGenerator(BlockGenerator):
         render_result = result["render_result"]
         summary_payload = result["summary"]
         analysis = result["analysis"]
+        visual_review = render_result.visual_review
         artifacts = [artifact.model_dump() for artifact in render_result.artifacts]
         primary = next(
             (
@@ -116,6 +132,7 @@ class AnimationGenerator(BlockGenerator):
             {
                 "retry_attempts": render_result.retry_attempts,
                 "quality": request_config.quality,
+                "visual_review": visual_review.model_dump() if visual_review else None,
             },
         )
 

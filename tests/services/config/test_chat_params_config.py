@@ -25,6 +25,26 @@ def _write_agents_yaml(tmp_path: Path, content: dict[str, Any]) -> Path:
 class TestGetChatParams:
     """Verify get_chat_params() correctly resolves capabilities.chat."""
 
+    def test_reasoning_recovery_policy_round_trips(self, tmp_path, monkeypatch):
+        project_root = _write_agents_yaml(
+            tmp_path,
+            {
+                "capabilities": {
+                    "chat": {
+                        "reasoning_budget_recovery": {
+                            "strategy": "increase_output_budget",
+                            "max_tokens": 16000,
+                        },
+                    }
+                }
+            },
+        )
+        monkeypatch.setattr(loader_module, "PROJECT_ROOT", project_root)
+        assert get_chat_params()["reasoning_budget_recovery"] == {
+            "strategy": "increase_output_budget",
+            "max_tokens": 16000,
+        }
+
     def test_returns_defaults_when_file_missing(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr(loader_module, "PROJECT_ROOT", tmp_path)
         params = get_chat_params()
@@ -159,30 +179,30 @@ class TestReadIntHelper:
     """Verify ``_read_int`` gracefully resolves nested chat token budgets."""
 
     def test_empty_dict_falls_back_to_default(self):
-        from deeptutor.agents.chat.agentic_pipeline import _read_int
+        from deeptutor.agents.loop.pipeline import _read_int
 
         assert _read_int({}, key="max_tokens", default=8000) == 8000
 
     def test_resolves_nested_max_tokens(self):
-        from deeptutor.agents.chat.agentic_pipeline import _read_int
+        from deeptutor.agents.loop.pipeline import _read_int
 
         cfg = {"max_tokens": 5000}
         assert _read_int(cfg, key="max_tokens", default=8000) == 5000
 
     def test_coerces_string_numbers(self):
-        from deeptutor.agents.chat.agentic_pipeline import _read_int
+        from deeptutor.agents.loop.pipeline import _read_int
 
         cfg = {"max_tokens": "5000"}
         assert _read_int(cfg, key="max_tokens", default=8000) == 5000
 
     def test_falls_back_on_garbage(self):
-        from deeptutor.agents.chat.agentic_pipeline import _read_int
+        from deeptutor.agents.loop.pipeline import _read_int
 
         cfg = {"max_tokens": "abc"}
         assert _read_int(cfg, key="max_tokens", default=8000) == 8000
 
     def test_non_dict_input_falls_back(self):
-        from deeptutor.agents.chat.agentic_pipeline import _read_int
+        from deeptutor.agents.loop.pipeline import _read_int
 
         assert _read_int(12345, key="max_tokens", default=8000) == 8000
         assert _read_int(None, key="max_tokens", default=8000) == 8000

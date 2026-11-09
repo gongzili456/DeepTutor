@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import time
 from typing import Any, Callable
 
 from deeptutor.core.context import Attachment
+from deeptutor.services.model_selection.task_agent import task_model_agent
 
 from .agents import (
     CodeGeneratorAgent,
@@ -16,10 +18,13 @@ from .agents import (
 )
 from .duration_utils import parse_target_duration_seconds
 from .models import RenderResult, VisualReviewResult
-from .renderer import ManimRenderService
+from .renderer import ManimRenderError, ManimRenderService
 from .request_config import MathAnimatorRequestConfig
 from .retry_manager import CodeRetryManager
 from .visual_review import VisualReviewService
+
+# Layout repair rounds checked before rendering (a dry run, seconds each).
+MAX_LAYOUT_ROUNDS = 3
 
 
 class MathAnimatorPipeline:
@@ -32,8 +37,16 @@ class MathAnimatorPipeline:
         language: str = "zh",
         trace_callback: Callable[[dict[str, Any]], Any] | None = None,
         enable_visual_review: bool = False,
+        workspace_output_dir: str | Path | None = None,
+        workspace_root: str | Path | None = None,
+        workspace_id: str = "",
     ) -> None:
         self.enable_visual_review = enable_visual_review
+        self.workspace_output_dir = (
+            Path(workspace_output_dir).resolve() if workspace_output_dir else None
+        )
+        self.workspace_root = Path(workspace_root).resolve() if workspace_root else None
+        self.workspace_id = workspace_id
         self.analysis_agent = ConceptAnalysisAgent(
             api_key=api_key,
             base_url=base_url,
@@ -51,6 +64,12 @@ class MathAnimatorPipeline:
             base_url=base_url,
             api_version=api_version,
             language=language,
+        )
+        # Repairs are targeted edits to a working script; the task model does them in
+        # seconds where a reasoning chat model can take several minutes.
+        self.repair_agent = (
+            task_model_agent(lambda **kw: CodeGeneratorAgent(language=language, **kw))
+            or self.code_agent
         )
         self.summary_agent = SummaryAgent(
             api_key=api_key,
@@ -75,6 +94,7 @@ class MathAnimatorPipeline:
             self.analysis_agent,
             self.design_agent,
             self.code_agent,
+            self.repair_agent,
             self.summary_agent,
             self.visual_review_agent,
         ):
@@ -145,7 +165,12 @@ class MathAnimatorPipeline:
         on_render_progress: Callable[[str, bool], Any] | None = None,
         on_retry_status: Callable[[str], Any] | None = None,
     ) -> tuple[str, RenderResult]:
-        renderer = ManimRenderService(turn_id, progress_callback=on_render_progress)
+        renderer = ManimRenderService(
+            turn_id,
+            progress_callback=on_render_progress,
+            output_dir=self.workspace_output_dir,
+            workspace_root=self.workspace_root,
+        )
         duration_target_seconds = parse_target_duration_seconds(
             " ".join(
                 part.strip()
@@ -155,7 +180,11 @@ class MathAnimatorPipeline:
         )
         review_callback: Callable[[str, RenderResult], Any] | None = None
         if self.enable_visual_review and self.visual_review_agent is not None:
-            review_service = VisualReviewService(turn_id, progress_callback=on_render_progress)
+            review_service = VisualReviewService(
+                turn_id,
+                progress_callback=on_render_progress,
+                output_dir=self.workspace_output_dir,
+            )
 
             async def _review_callback(
                 current_code: str, render_result: RenderResult
@@ -170,6 +199,42 @@ class MathAnimatorPipeline:
                 )
 
             review_callback = _review_callback
+        elif request_config.output_mode == "video":
+            # No vision model: measure the scene's geometry instead. The dry-run check takes
+            # seconds, so it gates each render: a failing layout goes back for repair before
+            # any frame is drawn. After the rounds run out the scene renders as it stands.
+            from .layout_probe import geometry_review
+
+            layout_rounds = {"left": MAX_LAYOUT_ROUNDS}
+            render_scene = renderer.render
+
+            async def _checked_render(*, code: str, output_mode: str, quality: str) -> RenderResult:
+                if layout_rounds["left"] > 0:
+                    review = await geometry_review(code)
+                    if review is not None and not review.passed:
+                        layout_rounds["left"] -= 1
+                        raise ManimRenderError(
+                            "Layout check (before rendering) failed. "
+                            + review.summary
+                            + " Suggested fix: "
+                            + review.suggested_fix
+                        )
+                return await render_scene(code=code, output_mode=output_mode, quality=quality)
+
+            renderer.render = _checked_render  # type: ignore[method-assign]
+
+            async def _geometry_callback(
+                current_code: str, render_result: RenderResult
+            ) -> VisualReviewResult | None:
+                # Record-only: what the rendered scene still has, for the result payload.
+                review = await geometry_review(current_code)
+                if review is None:
+                    return None
+                if not review.passed:
+                    review.summary = "Layout issues remain after repair rounds: " + review.summary
+                return review
+
+            review_callback = _geometry_callback
 
         retry_manager = CodeRetryManager(
             renderer=renderer,
@@ -177,7 +242,7 @@ class MathAnimatorPipeline:
             on_retry=on_retry,
             on_status=on_retry_status,
             review_callback=review_callback,
-            repair_callback=lambda current_code, error_message, attempt: self.code_agent.repair(
+            repair_callback=lambda current_code, error_message, attempt: self.repair_agent.repair(
                 user_input=user_input,
                 output_mode=request_config.output_mode,
                 current_code=current_code,
@@ -191,7 +256,35 @@ class MathAnimatorPipeline:
             output_mode=request_config.output_mode,
             quality=request_config.quality,
         )
-        return final_code, RenderResult.model_validate(render_result.model_dump())
+        result = RenderResult.model_validate(render_result.model_dump())
+        self._publish_workspace_artifacts(result)
+        return final_code, result
+
+    def _publish_workspace_artifacts(self, render_result: RenderResult) -> None:
+        """Snapshot final Manim files into the universal presentation layer."""
+        if not self.workspace_id or self.workspace_root is None:
+            return
+        rows = [
+            {
+                "path": artifact.relative_path,
+                "title": artifact.label or artifact.filename,
+            }
+            for artifact in render_result.artifacts
+            if artifact.relative_path
+        ]
+        if not rows:
+            return
+        from deeptutor.services.workspace import get_content_workspace_service
+
+        service = get_content_workspace_service()
+        binding = service.binding_by_id(self.workspace_id)
+        items = service.publish(binding, rows)
+        by_path = {item.relative_path: item for item in items}
+        for artifact in render_result.artifacts:
+            item = by_path.get(artifact.relative_path)
+            if item is not None:
+                artifact.url = item.url
+        render_result.workspace_items = [item.to_dict() for item in items]
 
     async def run_summary(
         self,

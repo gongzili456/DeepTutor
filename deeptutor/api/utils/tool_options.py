@@ -14,17 +14,20 @@ spelling of ``provider_id`` and stays populated for existing clients.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import logging
 from typing import Any
 
-from deeptutor.core.i18n import current_language
 from deeptutor.i18n.metadata_i18n import localized_description, tool_description_i18n
+from deeptutor.services.i18n import current_language
 
 logger = logging.getLogger(__name__)
 
 
 async def build_tool_options(
-    *, exclude_builtin: set[str] | None = None
+    *,
+    exclude_builtin: set[str] | None = None,
+    optional_tools: Iterable[str] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Build the configurable-tool surface.
 
@@ -32,8 +35,15 @@ async def build_tool_options(
     the partners API passes ``{"read_memory", "write_memory"}`` because partners
     use the mandatory ``partner_*`` memory tools instead and cannot configure
     chat's memory tools.
+
+    ``optional_tools`` is an optional allow-list for the user-toggleable
+    surface.  The generic builder intentionally owns no admin or partner
+    policy: callers that need a restricted view pass it explicitly, while the
+    multi-user grant editor keeps seeing the complete assignable catalog.
     """
-    from deeptutor.agents._shared.tool_composition import default_optional_tools
+    from deeptutor.agents._shared.tool_composition import (
+        default_optional_tools,
+    )
     from deeptutor.runtime.registry.deferred_tools import provider_identity
     from deeptutor.runtime.registry.tool_registry import get_tool_registry
     from deeptutor.tools.builtin import CONFIGURABLE_BUILTIN_TOOL_NAMES
@@ -64,7 +74,12 @@ async def build_tool_options(
             "description_i18n": descriptions,
         }
 
-    tools: list[dict[str, Any]] = [_describe(name) for name in default_optional_tools()]
+    allowed_optional = None if optional_tools is None else frozenset(optional_tools)
+    tools: list[dict[str, Any]] = [
+        _describe(name)
+        for name in default_optional_tools()
+        if allowed_optional is None or name in allowed_optional
+    ]
     builtin_tools: list[dict[str, Any]] = [
         _describe(name) for name in CONFIGURABLE_BUILTIN_TOOL_NAMES if name not in exclude
     ]
@@ -79,7 +94,18 @@ async def build_tool_options(
     for tool in registry.deferred_tools():
         try:
             definition = tool.get_definition()
-        except Exception:
+        except Exception as exc:
+            # The definition is the only place a deferred tool's name lives,
+            # so identify the failure by provider and adapter class instead
+            # of dropping it from the options without a trace.
+            kind, provider_id = provider_identity(tool)
+            logger.warning(
+                "tool options skipped %s tool %r (provider %r): get_definition() failed: %s",
+                kind or "unknown",
+                type(tool).__name__,
+                provider_id or "unknown",
+                exc,
+            )
             continue
         kind, provider_id = provider_identity(tool)
         if (kind or "mcp") != "mcp":

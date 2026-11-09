@@ -47,10 +47,11 @@ class MCPServerConfig(BaseModel):
     # behaviour
     tool_timeout: int = Field(default=30, ge=1, le=600)
     enabled_tools: list[str] = Field(default_factory=lambda: ["*"])
-    # Blocklist applied after ``enabled_tools`` — for "everything except X"
-    # entries (used by the built-in pageindex server).
+    # Blocklist applied after ``enabled_tools`` — for "everything except X".
     disabled_tools: list[str] = Field(default_factory=list)
     enabled: bool = True
+    # Self-service exception requires a matching administrator-approved origin.
+    allow_private_network: bool = False
     # authentication
     #: ``"oauth"`` when this server requires an OAuth 2.1 authorization the
     #: account has to grant interactively; ``""`` when a static credential in

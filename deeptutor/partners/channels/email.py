@@ -102,9 +102,20 @@ class EmailChannel(BaseChannel):
                 "Email channel disabled: consent_granted is false. "
                 "Set channels.email.consentGranted=true after explicit user permission."
             )
+            self.set_setup_state(
+                "action_required",
+                message="Explicit consent is required before email polling can start.",
+            )
             return
 
         if not self._validate_config():
+            self.set_setup_state(
+                "action_required",
+                message=(
+                    "Required fields are missing. Complete the channel configuration "
+                    "and save again."
+                ),
+            )
             return
 
         self._running = True
@@ -114,6 +125,7 @@ class EmailChannel(BaseChannel):
         while self._running:
             try:
                 inbound_items = await asyncio.to_thread(self._fetch_new_messages)
+                self.set_setup_state("running")
                 for item in inbound_items:
                     sender = item["sender"]
                     subject = item.get("subject", "")
@@ -132,6 +144,10 @@ class EmailChannel(BaseChannel):
                     )
             except Exception as e:
                 logger.error("Email polling error: {}", e)
+                self.set_setup_state(
+                    "error",
+                    message="Channel connection failed; the listener will retry.",
+                )
 
             await asyncio.sleep(poll_seconds)
 
@@ -441,7 +457,15 @@ class EmailChannel(BaseChannel):
 
     @staticmethod
     def _html_to_text(raw_html: str) -> str:
-        text = re.sub(r"<\s*br\s*/?>", "\n", raw_html, flags=re.IGNORECASE)
+        # Drop <style>/<script> blocks whole — stripping only their tags would
+        # leave the CSS/JS body as text in the message fed to the model.
+        text = re.sub(
+            r"<\s*(style|script)\b[^>]*>.*?<\s*/\s*\1\s*>",
+            " ",
+            raw_html,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        text = re.sub(r"<\s*br\s*/?>", "\n", text, flags=re.IGNORECASE)
         text = re.sub(r"<\s*/\s*p\s*>", "\n", text, flags=re.IGNORECASE)
         text = re.sub(r"<[^>]+>", "", text)
         return html.unescape(text)

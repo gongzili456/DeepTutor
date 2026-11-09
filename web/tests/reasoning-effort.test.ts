@@ -10,6 +10,16 @@ import {
 const values = (binding: string, model: string, current = ""): string[] =>
   reasoningEffortOptions(binding, model, current).map((option) => option.value);
 
+test("MiniMax Flash exposes adaptive effort levels and preserves saved values", () => {
+  for (const binding of ["minimax", "minimax_anthropic"]) {
+    assert.deepEqual(values(binding, "MiniMax-M3.1-Flash"), [
+      "", "low", "medium", "high", "xhigh", "max",
+    ]);
+    assert.deepEqual(values(binding, "MiniMax-M3"), ["", "none", "adaptive"]);
+    assert.equal(values(binding, "MiniMax-M3.1-Flash", "none").includes("none"), true);
+  }
+});
+
 test("Gemini 3 and 2.5 Pro do not list the invalid none effort", () => {
   assert.deepEqual(values("gemini", "gemini-3.6-flash"), [
     "",
@@ -92,11 +102,62 @@ test("known reasoning families get conservative provider-specific choices", () =
     "high",
   ]);
   assert.deepEqual(values("dashscope", "qwen3-max"), ["", "minimal", "high"]);
-  assert.deepEqual(values("custom", "deepseek-reasoner"), [
+});
+
+test("gpt-5.6-sol swaps minimal for none and adds max", () => {
+  // Its enum is not the gpt-5 one: `minimal` is a 400 and `max` sits above
+  // `xhigh`. The generic gpt-5 branch must not swallow it.
+  assert.deepEqual(values("openai", "gpt-5.6-sol"), [
     "",
-    "minimal",
+    "none",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+  ]);
+  // Sibling gpt-5.6 variants are unconfirmed, so they stay on the gpt-5 list
+  // rather than being offered a level they may reject.
+  assert.equal(values("openai", "gpt-5.6-luna").includes("max"), false);
+});
+
+test("OpenAI-compatible gateways expose explicit effort levels", () => {
+  assert.deepEqual(values("custom", "idrouter/qd/lite"), [
+    "",
+    "none",
+    "low",
+    "medium",
     "high",
   ]);
+  assert.deepEqual(values("openai-compatible", "gateway/model"), [
+    "",
+    "none",
+    "low",
+    "medium",
+    "high",
+  ]);
+  assert.deepEqual(values("custom", "gateway/model", "vendor-level"), [
+    "",
+    "none",
+    "low",
+    "medium",
+    "high",
+    "vendor-level",
+  ]);
+});
+
+test("Anthropic-compatible aliases follow the Anthropic model rules", () => {
+  assert.deepEqual(values("anthropic-compatible", "claude-sonnet-4-5"), [
+    "",
+    "none",
+    "low",
+    "medium",
+    "high",
+  ]);
+  assert.deepEqual(
+    values("anthropic_compatible", "claude-opus-4-6").includes("adaptive"),
+    false,
+  );
 });
 
 test("unknown models stay hidden unless they already carry an override", () => {
@@ -123,6 +184,12 @@ test("managed profiles use only the provider-supported reasoning levels", () => 
     ]).map((option) => option.value),
     ["", "high", "medium"],
   );
+  assert.deepEqual(
+    reasoningEffortOptionsFromSupportedLevels(["none", "low", "none"]).map(
+      (option) => option.value,
+    ),
+    ["", "none", "low"],
+  );
 });
 
 test("Auto removes the catalog field instead of persisting an empty string", () => {
@@ -134,4 +201,16 @@ test("Auto removes the catalog field instead of persisting an empty string", () 
 
   setModelReasoningEffort(model, " medium ");
   assert.equal(model.reasoning_effort, "medium");
+});
+
+
+test("GLM effort choices follow the documented model family and retain invalid values for recovery", () => {
+  assert.deepEqual(values("openai", "glm-5.3"), ["", "low", "high", "max"]);
+  assert.deepEqual(values("zhipu", "glm-5.3"), ["", "low", "high", "max"]);
+  assert.deepEqual(values("custom", "z-ai/glm-5.3"), ["", "low", "high", "max"]);
+  assert.deepEqual(values("azure", "GLM-5.3"), ["", "low", "high", "max"]);
+  assert.deepEqual(values("openai", "glm-4.7"), []);
+  assert.deepEqual(values("openai", "glm-5.3-unknown"), []);
+  assert.deepEqual(values("openai", "glm-5.3", "medium"), ["", "low", "high", "max", "medium"]);
+  assert.deepEqual(values("openai", "glm-4.7", "vendor-level"), ["", "vendor-level"]);
 });

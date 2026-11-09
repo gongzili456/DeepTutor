@@ -10,6 +10,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from deeptutor.services.keypool import KeyPool
+
 
 def looks_like_multimodal_embedding_model(model_name: Optional[str]) -> bool:
     """Best-effort guard for OpenAI-compatible multimodal embedding models."""
@@ -43,6 +45,7 @@ class EmbeddingRequest:
             - Cohere: Maps to 'input_type' ("search_document", "search_query", "classification", "clustering")
             - Jina: Maps to 'task' ("retrieval.passage", "retrieval.query", etc.)
             - Gemini Embedding 2: Maps to retrieval-specific text instructions
+            - NVIDIA NIM: Maps to 'input_type' ("passage", "query")
             - OpenAI/Ollama: Ignored
         encoding_format: Output format ("float" or "base64"). ``None`` (the
             default) lets each adapter decide: OpenAI-compatible gateways omit
@@ -154,7 +157,11 @@ class BaseEmbeddingAdapter(ABC):
                   model family (default).
                 - request_timeout: Request timeout in seconds
         """
-        self.api_key = config.get("api_key")
+        raw_api_key = config.get("api_key")
+        keys = raw_api_key if isinstance(raw_api_key, list) else [raw_api_key]
+        keys = [str(key).strip() for key in keys if str(key or "").strip()]
+        self._key_pool = KeyPool(keys) if keys else None
+        self.api_key = keys[0] if keys else ""
         self.base_url = config.get("base_url")
         self.api_version = config.get("api_version")
         self.model = config.get("model")

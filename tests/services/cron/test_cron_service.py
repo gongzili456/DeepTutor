@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
+import json
+import sys
 import time
+from types import SimpleNamespace
 
 import pytest
 
+from deeptutor.services.cron import repository as cron_repository
 from deeptutor.services.cron.service import (
     CronOwner,
     CronSchedule,
@@ -22,6 +27,34 @@ def _now_ms() -> int:
 
 def _chat_owner(user_id: str = "local-admin") -> CronOwner:
     return CronOwner(kind="chat", user_id=user_id, session_id="s1")
+
+
+def test_cron_repository_does_not_bind_fcntl_at_import() -> None:
+    assert "fcntl" not in cron_repository.__dict__
+
+
+def test_cron_repository_uses_msvcrt_locking_on_windows(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[int, int]] = []
+    fake_msvcrt = SimpleNamespace(
+        LK_LOCK=1,
+        LK_UNLCK=2,
+        locking=lambda _fileno, mode, length: calls.append((mode, length)),
+    )
+    monkeypatch.setattr(cron_repository, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setitem(sys.modules, "msvcrt", fake_msvcrt)
+
+    repository = cron_repository.SQLiteCronRepository(tmp_path / "jobs.sqlite3")
+
+    assert repository.revision() == 0
+    assert calls == [
+        (fake_msvcrt.LK_LOCK, 1),
+        (fake_msvcrt.LK_UNLCK, 1),
+        (fake_msvcrt.LK_LOCK, 1),
+        (fake_msvcrt.LK_UNLCK, 1),
+    ]
+    assert repository._migration_lock_path.read_bytes() == b"\0"
 
 
 class TestComputeNextRun:
@@ -40,6 +73,30 @@ class TestComputeNextRun:
         now = _now_ms()
         result = compute_next_run(CronSchedule(kind="cron", expr="0 9 * * *"), now)
         assert result is not None and result > now
+
+    @pytest.mark.skipif(not hasattr(time, "tzset"), reason="needs time.tzset (POSIX)")
+    @pytest.mark.parametrize(
+        ("now", "expected"),
+        [
+            # US DST starts Sun 2026-03-08 and ends Sun 2026-11-01.
+            ((2026, 3, 7, 10, 0), (2026, 3, 8, 9, 0)),
+            ((2026, 10, 31, 10, 0), (2026, 11, 1, 9, 0)),
+        ],
+    )
+    def test_cron_without_tz_keeps_local_wall_clock_across_dst(
+        self, monkeypatch: pytest.MonkeyPatch, now, expected
+    ):
+        pytest.importorskip("croniter")
+        monkeypatch.setenv("TZ", "EST5EDT,M3.2.0,M11.1.0")
+        time.tzset()
+        try:
+            now_ms = int(datetime(*now).timestamp() * 1000)
+            result = compute_next_run(CronSchedule(kind="cron", expr="0 9 * * *"), now_ms)
+            assert result is not None
+            assert datetime.fromtimestamp(result / 1000) == datetime(*expected)
+        finally:
+            monkeypatch.undo()
+            time.tzset()
 
     def test_bad_cron_expression_raises(self):
         pytest.importorskip("croniter")
@@ -120,6 +177,64 @@ class TestJobManagement:
         assert service.list_jobs() == []
         # The corrupt original was moved aside, not overwritten.
         assert any(p.name.startswith("jobs") and "corrupt" in p.name for p in tmp_path.iterdir())
+
+    def test_two_service_instances_observe_each_others_changes(self, tmp_path):
+        store = tmp_path / "jobs.sqlite3"
+        first = CronService(store_path=store)
+        second = CronService(store_path=store)
+        one = first.add_job(
+            name="one",
+            message="first",
+            schedule=CronSchedule(kind="every", every_seconds=60),
+            owner=_chat_owner(),
+        )
+        two = second.add_job(
+            name="two",
+            message="second",
+            schedule=CronSchedule(kind="every", every_seconds=60),
+            owner=_chat_owner(),
+        )
+
+        assert {job.id for job in first.list_jobs()} == {one.id, two.id}
+        assert first.cancel_job(two.id) is True
+        assert [job.id for job in second.list_jobs()] == [one.id]
+        assert store.read_bytes().startswith(b"SQLite format 3\x00")
+
+    def test_legacy_json_is_migrated_once_and_archived(self, tmp_path):
+        legacy = tmp_path / "jobs.json"
+        database = tmp_path / "jobs.sqlite3"
+        future = _now_ms() + 60_000
+        legacy.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "jobs": [
+                        {
+                            "id": "legacy-job",
+                            "name": "legacy",
+                            "message": "remember",
+                            "schedule": {"kind": "at", "at_ms": future},
+                            "owner": {
+                                "kind": "chat",
+                                "user_id": "local-admin",
+                                "session_id": "s1",
+                            },
+                            "enabled": True,
+                            "delete_after_run": True,
+                            "created_at_ms": _now_ms(),
+                            "state": {"next_run_at_ms": future, "run_history": []},
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        service = CronService(store_path=database, legacy_store_path=legacy)
+        assert [job.id for job in service.list_jobs()] == ["legacy-job"]
+        assert not legacy.exists()
+        assert len(list(tmp_path.glob("jobs.legacy-*.json"))) == 1
+        assert [job.id for job in CronService(store_path=database).list_jobs()] == ["legacy-job"]
 
 
 class TestSchedulerLoop:

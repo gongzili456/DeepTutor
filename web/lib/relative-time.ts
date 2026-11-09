@@ -3,8 +3,9 @@
  *
  * Two pieces:
  *
- * 1. `getDayGroupKey(ts)` — returns a stable token (`today` / `yesterday` /
- *    `last_7_days` / `earlier`) for grouping. Callers map that token to a
+ * 1. `getDayGroupKey(ts)` — returns a stable token (`today` / `this_week` /
+ *    `earlier`) for grouping: three buckets, so a list reads as "now, lately,
+ *    a while ago" rather than a calendar. Callers map that token to a
  *    translated label via i18next so the same grouping logic works across
  *    locales.
  *
@@ -14,25 +15,26 @@
  *    behaviour rather than throwing.
  */
 
-export type DayGroupKey = "today" | "yesterday" | "last_7_days" | "earlier";
+export type DayGroupKey = "today" | "this_week" | "earlier";
 
 export function getDayGroupKey(timestamp: number): DayGroupKey {
   const now = new Date();
   const date = new Date(timestamp * 1000);
-  const startOfToday = new Date(
+  // Compare local calendar dates on a uniform UTC axis: a local day can
+  // contain 23 or 25 hours when daylight-saving time changes.
+  const startOfToday = Date.UTC(
     now.getFullYear(),
     now.getMonth(),
     now.getDate(),
-  ).getTime();
-  const startOfItemDay = new Date(
+  );
+  const startOfItemDay = Date.UTC(
     date.getFullYear(),
     date.getMonth(),
     date.getDate(),
-  ).getTime();
+  );
   const diffDays = Math.floor((startOfToday - startOfItemDay) / 86400000);
   if (diffDays <= 0) return "today";
-  if (diffDays === 1) return "yesterday";
-  if (diffDays < 7) return "last_7_days";
+  if (diffDays < 7) return "this_week";
   return "earlier";
 }
 
@@ -47,5 +49,13 @@ export function formatRelativeTime(timestamp: number, locale: string): string {
     return formatter.format(Math.round(diffSeconds / 60), "minute");
   if (abs < 86400)
     return formatter.format(Math.round(diffSeconds / 3600), "hour");
-  return formatter.format(Math.round(diffSeconds / 86400), "day");
+  if (abs < 604800)
+    return formatter.format(Math.round(diffSeconds / 86400), "day");
+  // Past a week, days stop being readable — "31 days ago" is worse than
+  // "last month". Intl handles the plural and the wording per locale.
+  if (abs < 2592000)
+    return formatter.format(Math.round(diffSeconds / 604800), "week");
+  if (abs < 31536000)
+    return formatter.format(Math.round(diffSeconds / 2592000), "month");
+  return formatter.format(Math.round(diffSeconds / 31536000), "year");
 }

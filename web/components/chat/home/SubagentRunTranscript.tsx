@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { StreamEvent } from "@/lib/unified-ws";
-import { getTraceMeta } from "./TracePanels";
+import type { StreamEvent } from "@/features/chat/model/protocol";
+import { getTraceMeta } from "@/features/chat/trace";
 
 /**
  * A connected subagent's native run, rendered close to how its own CLI shows it:
@@ -150,7 +150,7 @@ function SubagentLine({ channel, text }: { channel: string; text: string }) {
 }
 
 function ToolResultBlock({ text }: { text: string }) {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const zh = i18n.language?.toLowerCase().startsWith("zh");
   const [open, setOpen] = useState(false);
   const lines = text.split("\n");
@@ -177,10 +177,10 @@ function ToolResultBlock({ text }: { text: string }) {
           {open
             ? zh
               ? "收起"
-              : "collapse"
+              : t("collapse")
             : zh
               ? `… 展开 +${hidden} 行`
-              : `… +${hidden} lines`}
+              : t("… +{{count}} lines", { count: hidden })}
         </button>
       )}
     </div>

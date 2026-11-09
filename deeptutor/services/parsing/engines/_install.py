@@ -1,19 +1,8 @@
-"""One-click background jobs for optional parser engines.
+"""Offline installation guidance and background model downloads for parsers.
 
-The Document Parsing settings page runs two kinds of background job without the
-user dropping to a shell:
-
-* **install** — ``pip install`` an engine's optional PyPI package.
-* **models**  — download an engine's model weights (e.g. Docling's layout/table
-  models via ``docling-tools models download``).
-
-Both mirror the MinerU model-download job (``mineru/models.py``): a single
-background subprocess with a cursor-based line log the UI starts, polls, and
-cancels. Commands come from fixed allow-lists (pip specs / downloader argv),
-never user input, so the subprocess argv can't be injected. Package installs use
-the bare package specs (the same strings as the ``[parse-*]`` extras) so pip
-never re-resolves DeepTutor itself; after a successful install we invalidate the
-import caches so the engine reports available in the same process (no restart).
+Optional packages must be installed while DeepTutor is stopped, using the
+installation path appropriate to the deployment. Only model downloads run as
+background subprocesses, with fixed downloader arguments and cursor-based logs.
 """
 
 from __future__ import annotations
@@ -35,14 +24,13 @@ logger = logging.getLogger(__name__)
 
 # Engine id -> pip requirement specifiers. Mirrors the optional extras in
 # pyproject.toml. Engines absent here (text_only built-in, mineru external
-# CLI/API) have no one-click install.
+# CLI/API) have no optional-package installation guidance.
+from deeptutor.modules.catalog import manifests
+
 ENGINE_PIP_SPECS: dict[str, list[str]] = {
-    # Pin <1.0: the 1.x line pulls onnxruntime + downloads a layout model and
-    # drops image extraction — keep the lightweight, image-capable pre-1.0 line.
-    "pymupdf4llm": ["pymupdf4llm>=0.0.17,<1.0"],
-    "markitdown": ["markitdown[pdf,docx,pptx,xlsx]>=0.0.1a2"],
-    "docling": ["docling>=2.0.0"],
-    "liteparse": ["liteparse>=2.11.1,<3.0"],
+    row["parser_engine"]: list(row["requirements"])
+    for row in manifests().values()
+    if "parser_engine" in row
 }
 
 # Engine id -> console-script argv that downloads its model weights. The script
@@ -58,7 +46,7 @@ _LINE_MIN_INTERVAL = 0.2
 
 
 def installable_engines() -> frozenset[str]:
-    """Engine ids that support one-click pip install."""
+    """Engine ids with supported optional-package installation guidance."""
     return frozenset(ENGINE_PIP_SPECS)
 
 
@@ -78,9 +66,12 @@ def resolve_model_downloader(engine: str) -> Optional[list[str]]:
     if not parts:
         return None
     name = parts[0]
-    sibling = Path(sys.executable).parent / name
-    if sibling.is_file() and os.access(sibling, os.X_OK):
-        return [str(sibling), *parts[1:]]
+    # Let the platform resolver search the active Python environment too.  On
+    # Windows pip installs console scripts as ``<name>.exe`` and ``which``
+    # applies PATHEXT; probing the extensionless Path directly misses it.
+    sibling = shutil.which(name, path=str(Path(sys.executable).parent))
+    if sibling:
+        return [sibling, *parts[1:]]
     found = shutil.which(name)
     if found:
         return [found, *parts[1:]]
@@ -93,6 +84,12 @@ def _invalidate_import_caches() -> None:
     try:
         importlib.invalidate_caches()
         package_version.cache_clear()
+        from .markitdown.formats import markitdown_supported_formats
+
+        # Docling format discovery is intentionally static and has no cache to
+        # invalidate: importing its runtime would pull PyTorch's OpenMP runtime
+        # into the FAISS backend process on macOS.
+        markitdown_supported_formats.cache_clear()
     except Exception:  # noqa: BLE001 - best effort
         logger.exception("Post-install cache invalidation failed")
 
@@ -119,14 +116,28 @@ class BackgroundJobManager:
         self._cancel_requested = False
 
     def start_install(self, *, engine: str, specs: list[str]) -> dict[str, Any]:
-        cmd = [sys.executable, "-m", "pip", "install", "--no-input", *specs]
-        return self._launch(
-            kind="install",
-            engine=engine,
-            cmd=cmd,
-            env={"PIP_DISABLE_PIP_VERSION_CHECK": "1"},
-            on_success=_invalidate_import_caches,
-        )
+        # Host-package changes cannot be safe while turns/API workers run.
+        # Model downloads remain background jobs because they do not mutate code.
+        if engine not in ENGINE_PIP_SPECS or specs != ENGINE_PIP_SPECS[engine]:
+            return {"ok": False, "message": "Unknown parser installation request."}
+        return {
+            "ok": False,
+            "message": (
+                "Live package installation is disabled. Docker: add parse-"
+                + engine
+                + " to DEEPTUTOR_EXTRAS in your existing deployment configuration, "
+                "preserving other extras; recreate the same service with its existing "
+                "configuration and mounts. Startup reapplies extras; inspect startup "
+                "logs for installation failures, then recheck availability. "
+                "Source checkout: stop DeepTutor, run `python scripts/install_extras.py parse-"
+                + engine
+                + "` from the checkout in the server's Python environment, then restart. "
+                "Wheel installation: stop DeepTutor, run `deeptutor module install parser-"
+                + engine
+                + "` in the server's Python environment, then restart. "
+                "Data mounts preserve user data, not installed Python packages."
+            ),
+        }
 
     def start_model_download(self, *, engine: str, cmd: list[str]) -> dict[str, Any]:
         return self._launch(kind="models", engine=engine, cmd=cmd)
@@ -176,13 +187,19 @@ class BackgroundJobManager:
                     "message": f"A {self._kind or 'job'} is already running ({self._engine}).",
                 }
             try:
+                # Downloaders are Python console scripts whose tqdm bars use
+                # block characters. Have them write UTF-8 and read it as UTF-8:
+                # an ANSI code page such as cp936 cannot decode those bytes, and
+                # a dead pump leaves the child blocked on a full pipe.
                 process = subprocess.Popen(  # nosec B603 - argv from fixed allow-lists
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     shell=False,
-                    env={**os.environ, **(env or {})},
+                    env={**os.environ, **(env or {}), "PYTHONUTF8": "1"},
                 )
             except Exception as exc:  # noqa: BLE001
                 self._state = "failed"

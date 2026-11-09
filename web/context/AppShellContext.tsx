@@ -12,6 +12,7 @@ import { apiFetch, apiUrl } from "@/lib/api";
 import {
   getStoredTheme,
   getSystemTheme,
+  initializeTheme,
   setTheme as applyThemePreference,
   subscribeToThemeChanges,
   type Theme,
@@ -23,9 +24,13 @@ import {
   CODE_BLOCK_SETTINGS_EVENT,
   CODE_BLOCK_THEME_STORAGE_KEY,
   CODE_BLOCK_WRAP_LONG_LINES_STORAGE_KEY,
+  DEFAULT_CODE_BLOCK_SHOW_LINE_NUMBERS,
+  DEFAULT_CODE_BLOCK_THEME,
+  DEFAULT_CODE_BLOCK_WRAP_LONG_LINES,
   LANGUAGE_EVENT,
   LANGUAGE_STORAGE_KEY,
   hasStoredLanguage,
+  hasStoredResponseLanguage,
   SIDEBAR_COLLAPSED_EVENT,
   SIDEBAR_COLLAPSED_STORAGE_KEY,
   normalizeCodeBlockShowLineNumbers,
@@ -48,11 +53,25 @@ import {
   writeStoredSidebarCollapsed,
   type AppLanguage,
 } from "@/context/app-shell-storage";
+import { fetchAuthStatus } from "@/lib/auth";
+import {
+  recoveryPrincipal,
+  RECOVERY_PRINCIPAL_CHANGED,
+} from "@/lib/recovery-principal";
+import {
+  DEFAULT_LEARNING_DISPLAY,
+  CONTENT_LINE_SPACING,
+  LEARNING_DISPLAY_APPLIED,
+  normalizeLearningDisplay,
+  type LearningDisplay,
+} from "@/lib/learning-display";
+import { isAppLanguage } from "@/i18n/languages";
 
 interface AppShellContextValue {
   theme: Theme;
   setTheme: (theme: Theme) => void;
   language: AppLanguage;
+  languageReady: boolean;
   setLanguage: (language: AppLanguage) => void;
   activeSessionId: string | null;
   setActiveSessionId: (sessionId: string | null) => void;
@@ -74,24 +93,93 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
   });
   // Always start with "en" to match SSR; hydrate from localStorage after mount
   const [language, setLanguageState] = useState<AppLanguage>("en");
+  const [languageReady, setLanguageReady] = useState(false);
   const [activeSessionId, setActiveSessionIdState] = useState<string | null>(
     () => readStoredActiveSessionId(),
   );
   // Always start expanded to match SSR; hydrate from localStorage after mount
   const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(false);
   // Code block settings - start with defaults, hydrate from localStorage after mount
-  const [codeBlockTheme, setCodeBlockThemeState] = useState<string>(() =>
-    readStoredCodeBlockTheme(),
+  const [codeBlockTheme, setCodeBlockThemeState] = useState<string>(
+    DEFAULT_CODE_BLOCK_THEME,
   );
   const [codeBlockShowLineNumbers, setCodeBlockShowLineNumbersState] =
-    useState<boolean>(() => readStoredCodeBlockShowLineNumbers());
+    useState<boolean>(DEFAULT_CODE_BLOCK_SHOW_LINE_NUMBERS);
   const [codeBlockWrapLongLines, setCodeBlockWrapLongLinesState] =
-    useState<boolean>(() => readStoredCodeBlockWrapLongLines());
+    useState<boolean>(DEFAULT_CODE_BLOCK_WRAP_LONG_LINES);
+
+  const [learningDisplay, setLearningDisplay] = useState(
+    DEFAULT_LEARNING_DISPLAY,
+  );
+
+  useEffect(() => {
+    let generation = 0;
+    let alive = true;
+    const reload = async () => {
+      const request = ++generation;
+      setLearningDisplay(DEFAULT_LEARNING_DISPLAY);
+      // The existing auth boundary is authoritative, including cross-tab logout.
+      const owner = recoveryPrincipal();
+      if (!owner) return;
+      try {
+        const response = await apiFetch(apiUrl("/api/settings/display"), {
+          skipAuthRedirect: true,
+        });
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (alive && request === generation && recoveryPrincipal() === owner) {
+          setLearningDisplay(normalizeLearningDisplay(payload));
+        }
+      } catch {
+        /* Offline: retain defaults, never another account's preferences. */
+      }
+    };
+    const onBoundary = () => {
+      void reload();
+    };
+    const onApplied = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          preferences: LearningDisplay;
+          principal: string | null;
+        }>
+      ).detail;
+      if (!recoveryPrincipal() || detail?.principal !== recoveryPrincipal())
+        return;
+      // A successful Apply supersedes any in-flight bootstrap response.
+      generation += 1;
+      setLearningDisplay(normalizeLearningDisplay(detail.preferences));
+    };
+    window.addEventListener(RECOVERY_PRINCIPAL_CHANGED, onBoundary);
+    window.addEventListener(LEARNING_DISPLAY_APPLIED, onApplied);
+    if (recoveryPrincipal()) void reload();
+    else void fetchAuthStatus();
+    return () => {
+      alive = false;
+      generation += 1;
+      window.removeEventListener(RECOVERY_PRINCIPAL_CHANGED, onBoundary);
+      window.removeEventListener(LEARNING_DISPLAY_APPLIED, onApplied);
+    };
+  }, []);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty(
+      "--learning-font-scale",
+      String(learningDisplay.content_font_scale / 100),
+    );
+    root.style.setProperty(
+      "--learning-line-height",
+      String(CONTENT_LINE_SPACING[learningDisplay.content_line_spacing]),
+    );
+    return () => {
+      root.style.removeProperty("--learning-font-scale");
+      root.style.removeProperty("--learning-line-height");
+    };
+  }, [learningDisplay]);
 
   useEffect(() => {
     // Hydrate client-only preferences after SSR-safe first render.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLanguageState(readStoredLanguage());
     setSidebarCollapsedState(readStoredSidebarCollapsed());
     setCodeBlockThemeState(readStoredCodeBlockTheme());
     setCodeBlockShowLineNumbersState(readStoredCodeBlockShowLineNumbers());
@@ -109,11 +197,31 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
     // reader-facing output language are stored together and are gated by the
     // same "has this browser chosen yet?" question, so splitting them into two
     // bootstraps would only give them a chance to disagree.
-    if (hasStoredLanguage()) return;
     const controller = new AbortController();
+    let cancelled = false;
+    let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
     void (async () => {
+      // Both keys are checked, not just the interface one. They were split
+      // after the interface language shipped, so a browser from before the
+      // split has `deeptutor-language` and no `deeptutor-response-language` —
+      // and returning here on the first alone locked it out of ever adopting
+      // the account's model output language.
+      const hadLanguageAtStart = hasStoredLanguage();
+      if (hadLanguageAtStart && !cancelled) {
+        setLanguageState(readStoredLanguage());
+      }
+      if (hadLanguageAtStart && hasStoredResponseLanguage()) {
+        if (!cancelled) {
+          setLanguageReady(true);
+        }
+        return;
+      }
+      fallbackTimer = setTimeout(() => {
+        controller.abort();
+        if (!cancelled) setLanguageReady(true);
+      }, 1_500);
       try {
-        const response = await apiFetch(apiUrl("/api/v1/settings/ui"), {
+        const response = await apiFetch(apiUrl("/api/settings/ui"), {
           signal: controller.signal,
           skipAuthRedirect: true,
         });
@@ -122,25 +230,44 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
           language?: unknown;
           response_language?: unknown;
         };
-        if (payload.language !== "zh" && payload.language !== "en") return;
-        writeStoredLanguage(payload.language);
-        // A backend that predates the split sends no response_language;
-        // resolveResponseLanguage inherits the interface locale, matching what
-        // the server does for a legacy interface.json.
-        writeStoredResponseLanguage(
-          resolveResponseLanguage(
-            typeof payload.response_language === "string"
-              ? payload.response_language
-              : null,
-            payload.language,
-          ),
-        );
-        setLanguageState(payload.language);
+        if (!isAppLanguage(payload.language)) return;
+        // Only what this browser is actually missing: a stored interface
+        // language is this user's own choice and the server must not overwrite
+        // it just because the response key was absent.
+        const hadLanguage = hasStoredLanguage();
+        if (!hadLanguage) writeStoredLanguage(payload.language);
+        if (!hasStoredResponseLanguage()) {
+          // A backend that predates the split sends no response_language;
+          // resolveResponseLanguage inherits the interface locale, matching
+          // what the server does for a legacy interface.json.
+          writeStoredResponseLanguage(
+            resolveResponseLanguage(
+              typeof payload.response_language === "string"
+                ? payload.response_language
+                : null,
+              payload.language,
+            ),
+          );
+        }
+        if (!cancelled && !hadLanguage) setLanguageState(payload.language);
       } catch {
         // Offline or unauthenticated: keep the local default.
+      } finally {
+        if (fallbackTimer) clearTimeout(fallbackTimer);
+        if (!cancelled) setLanguageReady(true);
       }
     })();
-    return () => controller.abort();
+    return () => {
+      cancelled = true;
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      controller.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    // ThemeScript paints before hydration. This starts the live
+    // prefers-color-scheme listener when the choice is system or unset.
+    setThemeState(initializeTheme());
   }, []);
 
   useEffect(() => {
@@ -241,6 +368,7 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
   const setLanguage = useCallback((nextLanguage: AppLanguage) => {
     writeStoredLanguage(nextLanguage);
     setLanguageState(nextLanguage);
+    setLanguageReady(true);
   }, []);
 
   const setActiveSessionId = useCallback((sessionId: string | null) => {
@@ -274,6 +402,7 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
       theme,
       setTheme,
       language,
+      languageReady,
       setLanguage,
       activeSessionId,
       setActiveSessionId,
@@ -292,6 +421,7 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
       codeBlockTheme,
       codeBlockWrapLongLines,
       language,
+      languageReady,
       setActiveSessionId,
       setCodeBlockShowLineNumbers,
       setCodeBlockTheme,

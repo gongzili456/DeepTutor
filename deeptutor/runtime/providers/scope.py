@@ -24,6 +24,8 @@ class ToolScope:
     #: writing it under another is how one account's servers become invisible to
     #: itself. Comes from ``multi_user.paths.current_owner_id``.
     owner_id: str = ""
+    # None inherits the account surface; empty explicitly disables MCP.
+    workspace_mcp: frozenset[str] | None = None
     #: A partner is a synthetic non-admin user anchored to an owner's
     #: workspace; its own configured filter is the authority for its surface,
     #: not the (absent) per-user grant.
@@ -32,12 +34,6 @@ class ToolScope:
     #: The caller's own configured whitelist (a partner's ``mcp_tools``).
     #: ``None`` = the caller imposes no restriction.
     caller_whitelist: frozenset[str] | None = None
-    #: Providers authorised by holding a *resource* rather than by a grant:
-    #: attaching a PageIndex knowledge base authorises that server. Given as
-    #: provider ids because the turn knows which resources it holds, not which
-    #: tool names they expand to — the view resolves that against the live
-    #: pool.
-    implicit_provider_ids: frozenset[str] = frozenset()
     #: An exclusive knowledge capability owns the turn and replaces the tool
     #: surface, so provider tools must not be advertised (see ``authorize``).
     exclusive_capability: bool = False

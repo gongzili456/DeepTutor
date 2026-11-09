@@ -26,16 +26,24 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { updateNotebookEntry } from "@/lib/notebook-api";
+import { notifySessionsChanged } from "@/lib/session-events";
 import { shouldAppendEventContent } from "@/lib/stream";
 import { hasPendingAskUser } from "@/lib/ask-user-state";
+import {
+  SUBMIT_CONNECT_RETRY_INTERVAL_MS,
+  SUBMIT_CONNECT_RETRY_LIMIT,
+} from "@/lib/send-retry";
 import {
   type ChatMessage,
   type LLMSelection,
   type StreamEvent,
-  UnifiedWSClient,
-} from "@/lib/unified-ws";
+} from "@/features/chat/model/protocol";
+import { UnifiedTurnClient } from "@/features/chat/transport/UnifiedTurnClient";
 import type { QuizQuestion } from "@/lib/quiz-types";
+import { isQuoteAttachment, quoteText } from "@/lib/quote-attachments";
+import type { SideChatContext } from "@/lib/side-chat";
 
 export interface FollowupMessage {
   role: "user" | "assistant" | "system";
@@ -47,6 +55,8 @@ export interface FollowupMessage {
    * main chat uses — reasoning blocks, tool calls, stage transitions, etc.
    */
   events?: StreamEvent[];
+  /** Passages the learner quoted with this message (user turns only). */
+  quotes?: string[];
 }
 
 export interface FollowupThreadState {
@@ -58,6 +68,8 @@ export interface FollowupThreadState {
   activeTurnId: string | null;
   messages: FollowupMessage[];
   error: string | null;
+  /** The skills and connectors this thread narrows itself to. */
+  resourceSelection: { skills: string[]; mcp: string[] };
 }
 
 export function createEmptyThreadState(): FollowupThreadState {
@@ -70,6 +82,7 @@ export function createEmptyThreadState(): FollowupThreadState {
     activeTurnId: null,
     messages: [],
     error: null,
+    resourceSelection: { skills: [], mcp: [] },
   };
 }
 
@@ -107,6 +120,11 @@ export interface QuizFollowupTabContext {
   language: string;
   /** Short label for the tab strip, e.g. "Q1 follow-up". */
   tabLabel: string;
+  /** Present when this thread is a side chat about a conversation, not a quiz. */
+  sideChat?: SideChatContext;
+  /** A passage to drop into the composer, once per ``id`` — "ask about this"
+   *  from a selection lands here as a quote attachment, never auto-sent. */
+  seedQuote?: { id: number; text: string };
 }
 
 export interface SendMessageInput {
@@ -124,7 +142,7 @@ export interface SendMessageInput {
   language?: string;
   /** Selected knowledge bases (names) for this turn. */
   knowledgeBases?: string[];
-  /** Notebook/book/history/question references — same shape the
+  /** Notebook/books/history/question references — same shape the
    *  main ChatPage builds for ``sendMessage``. */
   notebookReferences?: { notebook_id: string; record_ids: string[] }[];
   historyReferences?: string[];
@@ -134,12 +152,16 @@ export interface SendMessageInput {
   persona?: string;
   /** Pinned LLM selection — when null/undefined the server default applies. */
   llmSelection?: LLMSelection | null;
+  /** Skills and MCP connectors the turn may use; empty means none narrowed. */
+  skills?: string[];
+  mcp?: string[];
 }
 
 export interface HydratedFollowupMessage {
   role: "user" | "assistant" | "system";
   content: string;
   events?: StreamEvent[];
+  quotes?: string[];
 }
 
 export interface QuizFollowupController {
@@ -177,7 +199,11 @@ export interface QuizFollowupController {
           text?: string;
           answers?: Array<{ questionId: string; text: string }>;
         },
-  ): void;
+  ): Promise<boolean>;
+  /** Stop the thread's running turn — the composer's Stop button. Same
+   *  sequence as the main chat: ask the server to cancel, then drop the
+   *  socket so nothing more streams into the thread. */
+  cancelTurn(questionKey: string): void;
   /** Tab open helper — forwards to whoever registered an open handler. */
   openFollowupTab(context: QuizFollowupTabContext): void;
   /**
@@ -213,17 +239,21 @@ interface ProviderProps {
 }
 
 export function QuizFollowupProvider({ children }: ProviderProps) {
+  const { t } = useTranslation();
   const [threads, setThreads] = useState<Record<string, FollowupThreadState>>(
     {},
   );
   const threadsRef = useRef<Record<string, FollowupThreadState>>({});
   const runnersRef = useRef<
-    Map<string, { questionKey: string; client: UnifiedWSClient }>
+    Map<string, { questionKey: string; client: UnifiedTurnClient }>
   >(new Map());
   // Notebook entry ids per question — captured from sendMessage so the
   // ``session`` event handler can persist ``followup_session_id`` on the
   // matching entry once the backend assigns one.
   const entryIdsRef = useRef<Map<string, number | null>>(new Map());
+  // Questions asked as a side chat. Only those sessions show up as Little
+  // Tutor threads, so only they need to wake the session lists on a turn.
+  const sideChatKeysRef = useRef<Set<string>>(new Set());
   const openTabHandlerRef = useRef<
     ((ctx: QuizFollowupTabContext) => void) | null
   >(null);
@@ -253,6 +283,30 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
     [],
   );
 
+  const persistFollowupSessionId = useCallback(
+    (key: string, entryId: number, sessionId: string) => {
+      const write = () =>
+        updateNotebookEntry(entryId, { followup_session_id: sessionId });
+      void (async () => {
+        try {
+          await write();
+        } catch {
+          try {
+            await write();
+          } catch {
+            updateThread(key, (prev) => ({
+              ...prev,
+              error:
+                prev.error ||
+                t("Failed to link this follow-up chat to its notebook entry."),
+            }));
+          }
+        }
+      })();
+    },
+    [t, updateThread],
+  );
+
   const handleThreadEvent = useCallback(
     (key: string, event: StreamEvent) => {
       if (event.type === "session") {
@@ -272,10 +326,12 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
         if (runner) runner.questionKey = nextSessionId;
         const entryId = entryIdsRef.current.get(key);
         if (entryId) {
-          void updateNotebookEntry(entryId, {
-            followup_session_id: nextSessionId,
-          }).catch(() => {});
+          persistFollowupSessionId(key, entryId, nextSessionId);
         }
+        // A side chat is its own session; the conversation's message-level
+        // Little Tutor entry and the sidebar both list sessions, so they must
+        // hear about the new thread now rather than after a reload.
+        if (sideChatKeysRef.current.has(key)) notifySessionsChanged();
         return;
       }
 
@@ -286,6 +342,9 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
           currentStage: "",
           activeTurnId: null,
         }));
+        // The first turn usually names the thread; refresh the lists so the
+        // marker's popover shows the question instead of "Side chat".
+        if (sideChatKeysRef.current.has(key)) notifySessionsChanged();
         const runner = runnersRef.current.get(key);
         runner?.client.disconnect();
         runnersRef.current.delete(key);
@@ -341,7 +400,7 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
         return next;
       });
     },
-    [updateThread],
+    [persistFollowupSessionId, updateThread],
   );
 
   const ensureRunner = useCallback(
@@ -353,7 +412,7 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
       }
       const record = {
         questionKey: key,
-        client: new UnifiedWSClient(
+        client: new UnifiedTurnClient(
           (event) => handleThreadEvent(key, event),
           () => {
             const current = threadsRef.current[key];
@@ -379,22 +438,35 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
   );
 
   const sendThroughRunner = useCallback(
-    function send(key: string, message: ChatMessage, attempt = 0) {
+    function send(
+      key: string,
+      message: ChatMessage,
+      options: { awaitAck?: boolean; attempt?: number } = {},
+    ): Promise<boolean> {
+      const attempt = options.attempt ?? 0;
       const runner = ensureRunner(key);
       if (!runner.client.connected) {
-        if (attempt >= 10) {
+        if (attempt >= SUBMIT_CONNECT_RETRY_LIMIT) {
           updateThread(key, (prev) => ({
             ...prev,
             isStreaming: false,
             currentStage: "",
             error: "Follow-up chat failed to connect.",
           }));
-          return;
+          return Promise.resolve(false);
         }
-        window.setTimeout(() => send(key, message, attempt + 1), 200);
-        return;
+        return new Promise<boolean>((resolve) => {
+          window.setTimeout(
+            () => resolve(send(key, message, { ...options, attempt: attempt + 1 })),
+            SUBMIT_CONNECT_RETRY_INTERVAL_MS,
+          );
+        });
+      }
+      if (options.awaitAck) {
+        return runner.client.sendAwaitingAck(message);
       }
       runner.client.send(message);
+      return Promise.resolve(true);
     },
     [ensureRunner, updateThread],
   );
@@ -413,19 +485,68 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
         input: "",
         isStreaming: true,
         error: null,
-        messages: [...prev.messages, { role: "user", content }],
+        messages: [
+          ...prev.messages,
+          {
+            role: "user",
+            content,
+            quotes: input.attachments.filter(isQuoteAttachment).map(quoteText),
+          },
+        ],
       }));
 
+      const {
+        followup_question_context: followupQuestionContext,
+        selection_tutor_context: selectionTutorContext,
+        subagent_consult_budget: subagentConsultBudget,
+        consult_partner_id: consultPartnerId,
+        partner_discussion_group_id: partnerDiscussionGroupId,
+        answer_by: answerBy,
+        auto_route: autoRoute,
+        ...capabilityConfig
+      } = input.config ?? {};
+      // A side chat is the only follow-up kind that becomes a message-level
+      // Little Tutor thread; remember it before the server names its session.
+      if (selectionTutorContext) sideChatKeysRef.current.add(input.questionKey);
       sendThroughRunner(input.questionKey, {
         type: "start_turn",
         content,
         tools: [],
         capability: "chat",
         knowledge_bases: input.knowledgeBases ?? [],
+        skills: input.skills ?? [],
+        mcp: input.mcp ?? [],
         session_id: current.sessionId,
         attachments: input.attachments,
         language: input.language,
-        config: input.config,
+        ...(Object.keys(capabilityConfig).length
+          ? { config: capabilityConfig }
+          : {}),
+        ...(followupQuestionContext &&
+        typeof followupQuestionContext === "object"
+          ? {
+              followup_question_context: followupQuestionContext as Record<
+                string,
+                unknown
+              >,
+            }
+          : {}),
+        ...(selectionTutorContext && typeof selectionTutorContext === "object"
+          ? {
+              selection_tutor_context: selectionTutorContext as Record<
+                string,
+                unknown
+              >,
+            }
+          : {}),
+        ...(typeof consultPartnerId === "string" && consultPartnerId ? { consult_partner_id: consultPartnerId } : {}),
+        ...(typeof partnerDiscussionGroupId === "string" && partnerDiscussionGroupId ? { partner_discussion_group_id: partnerDiscussionGroupId } : {}),
+        // Always restated, like the main chat: "" hands the thread back to Dito.
+        ...(typeof answerBy === "string" ? { answer_by: answerBy } : {}),
+        ...(typeof subagentConsultBudget === "number"
+          ? { subagent_consult_budget: subagentConsultBudget }
+          : {}),
+        ...(typeof autoRoute === "boolean" ? { auto_route: autoRoute } : {}),
         notebook_references: input.notebookReferences,
         history_references: input.historyReferences,
         book_references: input.bookReferences,
@@ -443,7 +564,7 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
   );
 
   const submitAskUserReply = useCallback(
-    (
+    async (
       key: string,
       reply:
         | string
@@ -451,22 +572,23 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
             text?: string;
             answers?: Array<{ questionId: string; text: string }>;
           },
-    ) => {
+    ): Promise<boolean> => {
       const current = threadsRef.current[key];
       const turnId = current?.activeTurnId;
-      if (!current || !turnId) return;
+      if (!current || !turnId) return false;
       // Allow submission either while the turn is still streaming OR while
       // it's paused on an unresolved ask_user card (matches the main chat's
       // ``submitUserReply`` guard).
       const pendingAskUser = current.messages.some((m) =>
         hasPendingAskUser(m.events, turnId),
       );
-      if (!current.isStreaming && !pendingAskUser) return;
+      if (!current.isStreaming && !pendingAskUser) return false;
 
-      const message: import("@/lib/unified-ws").SubmitUserReplyMessage = {
-        type: "submit_user_reply",
-        turn_id: turnId,
-      };
+      const message: import("@/features/chat/model/protocol").SubmitUserReplyMessage =
+        {
+          type: "submit_user_reply",
+          turn_id: turnId,
+        };
       if (typeof reply === "string") {
         message.text = reply;
       } else {
@@ -482,9 +604,39 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
         isStreaming: true,
         error: null,
       }));
-      sendThroughRunner(key, message);
+      const accepted = await sendThroughRunner(key, message, {
+        awaitAck: true,
+      });
+      if (!accepted) {
+        // The turn is gone; stop showing a spinner for work nobody is doing.
+        updateThread(key, (prev) => ({ ...prev, isStreaming: false }));
+      }
+      return accepted;
     },
     [sendThroughRunner, updateThread],
+  );
+
+  const cancelTurn = useCallback(
+    (key: string) => {
+      const current = threadsRef.current[key];
+      const turnId = current?.activeTurnId;
+      const runner = runnersRef.current.get(key);
+      if (runner) {
+        if (runner.client.connected && turnId) {
+          runner.client.send({ type: "cancel_turn", turn_id: turnId });
+        }
+        runner.client.disconnect();
+        runnersRef.current.delete(key);
+      }
+      if (!current?.isStreaming) return;
+      updateThread(key, (prev) => ({
+        ...prev,
+        isStreaming: false,
+        currentStage: "",
+        activeTurnId: null,
+      }));
+    },
+    [updateThread],
   );
 
   const openFollowupTab = useCallback((context: QuizFollowupTabContext) => {
@@ -510,6 +662,7 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
           role: m.role,
           content: m.content,
           events: m.events ?? [],
+          ...(m.quotes?.length ? { quotes: m.quotes } : {}),
         })),
       }));
     },
@@ -536,6 +689,7 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
       hydrateThread,
       sendMessage,
       submitAskUserReply,
+      cancelTurn,
       openFollowupTab,
       setOpenTabHandler,
       getAllThreads,
@@ -546,6 +700,7 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
       hydrateThread,
       sendMessage,
       submitAskUserReply,
+      cancelTurn,
       openFollowupTab,
       setOpenTabHandler,
       getAllThreads,
@@ -569,6 +724,12 @@ export function useQuizFollowupController(): QuizFollowupController {
     );
   }
   return ctx;
+}
+
+/** The controller where one is mounted — the viewer panel also renders in
+ *  places (tests, the reading page) that have no follow-up threads. */
+export function useOptionalQuizFollowupController(): QuizFollowupController | null {
+  return useContext(QuizFollowupCtx);
 }
 
 /** Returns the live thread snapshot for a question key, re-rendering on

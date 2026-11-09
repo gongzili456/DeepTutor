@@ -82,7 +82,7 @@ async def test_empty_pool_yields_an_empty_view() -> None:
 
 
 @pytest.mark.asyncio
-async def test_admin_sees_every_provider_tool(registry, monkeypatch) -> None:
+async def test_admin_sees_every_configured_mcp_provider(registry, monkeypatch) -> None:
     _grant(monkeypatch, None)
     view = await build_tool_view(base_registry=registry, scope=ToolScope(session_id="s"))
     assert {t.name for t in view.pool} == {"mcp_gh_search", "mcp_pageindex_search"}
@@ -104,39 +104,15 @@ async def test_ungranted_user_gets_no_tools_but_keeps_the_gate(registry, monkeyp
 
 
 @pytest.mark.asyncio
-async def test_attached_pageindex_kb_authorises_and_preloads_that_server(
-    registry, monkeypatch
-) -> None:
-    _grant(monkeypatch, set())
-    view = await build_tool_view(
-        base_registry=registry,
-        scope=ToolScope(session_id="s", implicit_provider_ids=frozenset({PAGEINDEX})),
-    )
-    assert {t.name for t in view.pool} == {"mcp_pageindex_search"}
-    assert view.loader is not None
-    # Preloaded: holding the KB is the permission, so no load_tools round-trip.
-    assert view.loader.loaded_names == {"mcp_pageindex_search"}
-
-
-@pytest.mark.asyncio
-async def test_exclusive_capability_suppresses_the_manifest_but_keeps_preloads(
-    registry, monkeypatch
-) -> None:
+async def test_exclusive_capability_suppresses_configured_mcp_tools(registry, monkeypatch) -> None:
     _grant(monkeypatch, None)
     view = await build_tool_view(
         base_registry=registry,
-        scope=ToolScope(
-            session_id="s",
-            implicit_provider_ids=frozenset({PAGEINDEX}),
-            exclusive_capability=True,
-        ),
+        scope=ToolScope(session_id="s", exclusive_capability=True),
     )
-    # Nothing is advertised (load_tools is not even mounted on such a turn) …
     assert view.manifest == ""
-    # … but the resource-authorised tool is still usable.
-    assert {t.name for t in view.pool} == {"mcp_pageindex_search"}
-    assert view.loader is not None
-    assert view.loader.loaded_names == {"mcp_pageindex_search"}
+    assert view.pool == ()
+    assert view.loader is None
 
 
 @pytest.mark.asyncio
@@ -154,6 +130,22 @@ async def test_partner_uses_its_own_filter(registry, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_partner_can_select_an_ordinarily_configured_pageindex_mcp(
+    registry, monkeypatch
+) -> None:
+    _grant(monkeypatch, set())
+    view = await build_tool_view(
+        base_registry=registry,
+        scope=ToolScope(
+            session_id="s",
+            is_partner=True,
+            caller_whitelist=frozenset({"mcp_pageindex_search"}),
+        ),
+    )
+    assert {tool.name for tool in view.pool} == {"mcp_pageindex_search"}
+
+
+@pytest.mark.asyncio
 async def test_a_failing_provider_degrades_instead_of_killing_the_turn(
     registry, monkeypatch
 ) -> None:
@@ -164,7 +156,8 @@ async def test_a_failing_provider_degrades_instead_of_killing_the_turn(
     view = await build_tool_view(base_registry=registry, scope=ToolScope(session_id="s"))
     assert view.loader is None
     assert view.pool == ()
-    assert view.registry is registry
+    assert isinstance(view.registry, ScopedToolRegistry)
+    assert not (await view.registry.execute("mcp_gh_search")).success
 
 
 @pytest.mark.asyncio
@@ -181,7 +174,10 @@ async def test_attach_adds_loaded_schemas_and_binds_the_live_list(registry, monk
     # Bound: a later load_tools call reaches the same list the loop re-reads.
     assert view.loader is not None
     view.loader.load(["mcp_pageindex_search"])
-    assert [s["function"]["name"] for s in live] == ["mcp_gh_search", "mcp_pageindex_search"]
+    assert [s["function"]["name"] for s in live] == [
+        "mcp_gh_search",
+        "mcp_pageindex_search",
+    ]
 
 
 @pytest.mark.asyncio
@@ -288,3 +284,48 @@ async def test_a_slow_personal_server_costs_only_its_own_tools(
     assert not any(t.name == "mcp_slow_thing" for t in view.pool)
     # The deployment's tools still made it — the turn is not degraded further.
     assert {t.name for t in view.pool} == {"mcp_gh_search", "mcp_pageindex_search"}
+
+
+@pytest.mark.asyncio
+async def test_workspace_selection_blocks_cached_loading_and_execution(registry, monkeypatch):
+    monkeypatch.setattr(
+        "deeptutor.services.mcp.load_loaded_tools",
+        lambda _: {"mcp_gh_search", "mcp_pageindex_search"},
+    )
+    view = await build_tool_view(
+        base_registry=registry,
+        scope=ToolScope(session_id="s", workspace_mcp=frozenset({"deployment:gh"})),
+    )
+    assert {tool.name for tool in view.pool} == {"mcp_gh_search"}
+    assert {s["function"]["name"] for s in view.loader.initial_schemas()} == {"mcp_gh_search"}
+    assert view.loader.load(["mcp_pageindex_search"])["unknown"] == ["mcp_pageindex_search"]
+    assert not (await view.registry.execute("mcp_pageindex_search")).success
+    assert (await view.registry.execute("mcp_gh_search")).success
+
+
+@pytest.mark.asyncio
+async def test_workspace_selection_cannot_expand_account_grant(registry, monkeypatch):
+    _grant(monkeypatch, set())
+    view = await build_tool_view(
+        base_registry=registry, scope=ToolScope(workspace_mcp=frozenset({"deployment:gh"}))
+    )
+    assert not view.pool
+    assert not (await view.registry.execute("mcp_gh_search")).success
+
+
+@pytest.mark.asyncio
+async def test_workspace_can_disable_owned_mcp_without_grant_escalation(registry, _stub_providers):
+    own = _McpTool("mcp_owned_search", "owned")
+    own.owner = "alice"
+    _stub_providers.scopes["alice"] = [own]
+    view = await build_tool_view(
+        base_registry=registry,
+        scope=ToolScope(owner_id="alice", workspace_mcp=frozenset({"account:owned"})),
+    )
+    assert {tool.name for tool in view.pool} == {"mcp_owned_search"}
+    assert not (await view.registry.execute("mcp_gh_search")).success
+    disabled = await build_tool_view(
+        base_registry=registry, scope=ToolScope(owner_id="alice", workspace_mcp=frozenset())
+    )
+    assert not disabled.pool
+    assert not (await disabled.registry.execute("mcp_gh_search")).success

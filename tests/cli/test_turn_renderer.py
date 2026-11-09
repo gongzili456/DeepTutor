@@ -1,6 +1,6 @@
 """Tests for the CLI turn-stream renderer against the chat-loop protocol.
 
-The chat agent loop (deeptutor/agents/chat/agent_loop.py) streams every
+The shared agent loop (deeptutor/agents/loop/agent_loop.py) streams every
 round's text as ``content`` chunks with ``trace_kind=llm_chunk`` and labels
 the round afterwards via a ``call_status`` marker carrying ``call_role``
 (``narration`` | ``finish``). These tests feed that exact event shape into
@@ -312,6 +312,19 @@ def test_ask_user_json_mode_sends_empty_reply_and_streams_events(monkeypatch) ->
     lines = [json.loads(line) for line in result.output.splitlines() if line.strip()]
     assert any(line.get("type") == "tool_result" for line in lines)
     assert replies == [{"turn_id": "turn-1", "text": "", "answers": None}]
+
+
+def test_json_mode_prints_event_text_unchanged(monkeypatch) -> None:
+    events = [
+        {"type": "content", "content": "Done :tada: Every other item from index 1 is s[1:x:2]."},
+        {"type": "done"},
+    ]
+    _install_fake_runtime(monkeypatch, events)
+
+    result = runner.invoke(app, ["run", "chat", "hello", "--format", "json"])
+
+    assert result.exit_code == 0, result.output
+    assert [json.loads(line) for line in result.stdout.splitlines()] == events
 
 
 def test_terminator_llm_output_renders_after_buffered_chunks(monkeypatch) -> None:

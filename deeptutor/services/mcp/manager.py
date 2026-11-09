@@ -46,15 +46,14 @@ from deeptutor.services.mcp.config import (
     MCPServerConfig,
     load_mcp_config,
 )
-from deeptutor.services.mcp.pageindex_server import with_builtin_servers
 
 logger = logging.getLogger(__name__)
 
 _CONNECT_TIMEOUT_S = 15
 _NAME_SANITIZE_RE = re.compile(r"[^a-zA-Z0-9_-]")
 
-#: Owner key for the deployment's own servers (the admin ``mcp.json`` plus
-#: injected built-ins). Connections are keyed by ``(owner, server_name)`` so a
+#: Owner key for the deployment's servers from the admin ``mcp.json``.
+#: Connections are keyed by ``(owner, server_name)`` so a
 #: future per-user server cannot collide with — or be routed into — another
 #: tenant's live session.
 SHARED_OWNER = "_shared"
@@ -167,7 +166,10 @@ class MCPToolAdapter(BaseTool):
         )
         return ToolResult(
             content=text,
-            metadata={"mcp_server": self._server_name, "mcp_tool": self._original_name},
+            metadata={
+                "mcp_server": self._server_name,
+                "mcp_tool": self._original_name,
+            },
         )
 
 
@@ -270,13 +272,13 @@ class MCPConnectionManager:
         async with self._lock_for(SHARED_OWNER):
             if self._started:
                 return
-            await self._sync_to_config(with_builtin_servers(load_mcp_config()))
+            await self._sync_to_config(load_mcp_config())
             self._started = True
 
     async def reload(self) -> None:
         """Re-read the persisted config and apply the diff to live connections."""
         async with self._lock_for(SHARED_OWNER):
-            await self._sync_to_config(with_builtin_servers(load_mcp_config()))
+            await self._sync_to_config(load_mcp_config())
             self._started = True
 
     async def shutdown(self) -> None:
@@ -432,6 +434,13 @@ class MCPConnectionManager:
         conn = self._connections.get((owner, server_name))
         if conn is None or conn.session is None or conn.status != "connected":
             return f"(MCP server {server_name!r} is not connected)"
+        if not conn.config.tool_allowed(tool_name, wrapped_tool_name(server_name, tool_name)):
+            return "(MCP tool is no longer enabled; no tool was invoked)"
+        if owner != SHARED_OWNER and conn.config.allow_private_network:
+            from deeptutor.services.mcp.network import approved_private_origin
+
+            if approved_private_origin(conn.config.url) is None:
+                return "(Private-network MCP origin approval was revoked; no tool was invoked)"
         try:
             return await self._call_watching_connection(
                 conn, tool_name, arguments, timeout, on_progress
@@ -557,6 +566,8 @@ class MCPConnectionManager:
         for block in result.content:
             if isinstance(block, types.TextContent):
                 parts.append(block.text)
+            elif isinstance(block, types.ImageContent):
+                parts.append("[MCP image omitted]")
             else:
                 parts.append(str(block))
         return "\n".join(parts) or "(no output)"
@@ -669,9 +680,14 @@ class MCPConnectionManager:
         """Connection task: owns the AsyncExitStack for one server."""
         from contextlib import AsyncExitStack
 
-        from mcp import ClientSession
-
         try:
+            # Imported inside the guarded block on purpose (issue #792): if the
+            # `mcp` package is missing, an import at function scope raises before
+            # anything can fail *ready*, so the task dies with an unretrieved
+            # ModuleNotFoundError while the connect waits out the full timeout.
+            # Inside the block the real cause reaches the caller immediately.
+            from mcp import ClientSession
+
             async with AsyncExitStack() as stack:
                 read, write = await self._open_transport(
                     stack, conn.config, owner=conn.owner, server_name=conn.name
@@ -772,14 +788,49 @@ class MCPConnectionManager:
             read, write = await stack.enter_async_context(stdio_client(params))
             return read, write
 
-        if self_service:
-            # Re-validated here, not only where the server was saved: DNS can
-            # change between the two, and this is the last point before a socket.
-            from deeptutor.services.mcp.network import validate_mcp_url_async
+        from deeptutor.services.mcp.network import (
+            approved_private_origin,
+            mcp_origin,
+            validate_mcp_url_async,
+        )
 
-            ok, error = await validate_mcp_url_async(cfg.url, strict=True)
-            if not ok:
-                raise ValueError(error)
+        trusted_origin = (
+            (approved_private_origin(cfg.url) if self_service else mcp_origin(cfg.url))
+            if cfg.allow_private_network
+            else None
+        )
+        strict_network = self_service
+        if self_service and cfg.allow_private_network and trusted_origin is None:
+            raise ValueError("Private-network MCP origin is not approved by an administrator")
+        ok, error = await validate_mcp_url_async(
+            cfg.url, strict=strict_network, trusted_origin=trusted_origin
+        )
+        if not ok:
+            raise ValueError(error)
+
+        async def network_guard(request):
+            # Revalidate every request/redirect and recheck revocable admin trust.
+            current_origin = (
+                (approved_private_origin(cfg.url) if self_service else mcp_origin(cfg.url))
+                if cfg.allow_private_network
+                else None
+            )
+            if self_service and cfg.allow_private_network and current_origin is None:
+                raise ValueError("Private-network MCP origin approval was revoked")
+            allowed, detail = await validate_mcp_url_async(
+                str(request.url),
+                strict=(
+                    self_service
+                    or (
+                        cfg.allow_private_network
+                        and mcp_origin(str(request.url)) != mcp_origin(cfg.url)
+                    )
+                ),
+                trusted_origin=current_origin,
+            )
+            if not allowed:
+                raise ValueError(detail)
+
         follow_redirects = not self_service
 
         # OAuth, when the server declares it. Non-interactive here on purpose:
@@ -809,6 +860,7 @@ class MCPConnectionManager:
                 return httpx.AsyncClient(
                     headers=merged or None,
                     follow_redirects=follow_redirects,
+                    event_hooks={"request": [network_guard]},
                     timeout=timeout,
                     # The transport supplies its own auth for some flows; ours
                     # wins when the server is OAuth-backed.
@@ -826,6 +878,7 @@ class MCPConnectionManager:
                 httpx.AsyncClient(
                     headers=cfg.headers or None,
                     follow_redirects=follow_redirects,
+                    event_hooks={"request": [network_guard]},
                     timeout=httpx.Timeout(60.0, connect=10.0),
                     auth=oauth_auth,
                 )

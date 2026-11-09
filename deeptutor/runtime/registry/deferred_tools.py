@@ -47,6 +47,8 @@ def _group_key(tool: BaseTool) -> tuple[str, str]:
     kind, provider_id = provider_identity(tool)
     if kind == "cli":
         return _CLI_GROUP
+    if kind == "pageindex":
+        return ("pageindex", provider_id)
     if provider_id:
         return ("mcp", provider_id)
     return _OTHER_GROUP
@@ -96,6 +98,9 @@ def render_deferred_tools_manifest(tools: list[BaseTool], *, language: str = "en
         _kind, provider_id = group
         if group == _CLI_GROUP:
             header = "### CLI 应用" if zh else "### CLI apps"
+        elif group[0] == "pageindex":
+            mode = "Cloud" if provider_id == "pageindex" else "OSS"
+            header = f"### PageIndex {mode}"
         elif group == _OTHER_GROUP:
             header = "### 其他" if zh else "### Other"
         else:
@@ -122,6 +127,7 @@ class DeferredToolLoader:
         session_id: str,
         loaded: set[str],
         allowed: set[str] | None = None,
+        capability_names: set[str] | None = None,
     ) -> None:
         self._registry = registry
         self._session_id = session_id
@@ -131,6 +137,9 @@ class DeferredToolLoader:
         # Enforced here, not only at manifest time, so the model cannot load
         # an off-list tool by guessing its name.
         self._allowed = set(allowed) if allowed is not None else None
+        # Capability-owned schemas may be deferred without changing global tools.
+        self._capability_names = set(capability_names or ())
+        self._loaded = {name for name in self._loaded if self._is_allowed(name)}
         self._live_schemas: list[dict[str, Any]] | None = None
 
     def _is_allowed(self, name: str) -> bool:
@@ -150,7 +159,9 @@ class DeferredToolLoader:
         stale: set[str] = set()
         for name in sorted(self._loaded):
             tool = self._registry.get(name)
-            if tool is None or not getattr(tool, "deferred", False):
+            if tool is None or not (
+                getattr(tool, "deferred", False) or name in self._capability_names
+            ):
                 stale.add(name)
                 continue
             if not self._is_allowed(name):
@@ -175,7 +186,11 @@ class DeferredToolLoader:
                 already.append(name)
                 continue
             tool = self._registry.get(name)
-            if tool is None or not getattr(tool, "deferred", False) or not self._is_allowed(name):
+            if (
+                tool is None
+                or not (getattr(tool, "deferred", False) or name in self._capability_names)
+                or not self._is_allowed(name)
+            ):
                 unknown.append(name)
                 continue
             if self._live_schemas is not None:

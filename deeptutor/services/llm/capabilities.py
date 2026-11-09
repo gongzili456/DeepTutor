@@ -17,6 +17,11 @@ Usage:
         # use streaming
 """
 
+from __future__ import annotations
+
+from collections.abc import Iterable, Mapping
+import threading
+
 # Provider capabilities configuration
 # Keys are binding names (lowercase), values are capability dictionaries
 PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
@@ -98,6 +103,15 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "system_in_messages": True,
         "has_thinking_tags": False,
     },
+    "claude_code": {
+        "supports_response_format": False,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": True,
+        "vision_url_supported": False,
+        "system_in_messages": True,
+        "has_thinking_tags": False,
+    },
     # DeepSeek
     "deepseek": {
         "supports_response_format": False,  # DeepSeek doesn't support strict JSON schema yet
@@ -149,14 +163,6 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "supports_vision": True,  # Depends on underlying model
         "system_in_messages": True,
     },
-    # OrcaRouter (aggregator, generally OpenAI-compatible)
-    "orcarouter": {
-        "supports_response_format": True,  # Depends on underlying model
-        "supports_streaming": True,
-        "supports_tools": True,
-        "supports_vision": True,  # Depends on underlying model
-        "system_in_messages": True,
-    },
     # Groq (fast inference)
     "groq": {
         "supports_response_format": True,
@@ -187,6 +193,16 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "supports_tools": True,
         "supports_vision": True,
         "system_in_messages": True,
+    },
+    # xAI Grok: the OpenAI-compatible endpoint supports tools, structured
+    # output and image input across the current Grok families.
+    "xai": {
+        "supports_response_format": True,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": True,
+        "system_in_messages": True,
+        "has_thinking_tags": False,
     },
     # DashScope / Alibaba Cloud (Qwen family)
     # Uses OpenAI-compatible API with native function calling support.
@@ -348,6 +364,72 @@ MODEL_OVERRIDES: dict[str, dict[str, object]] = {
 }
 
 
+# Per-model overrides typed by the user in Settings > Models, keyed by the
+# catalog's user-facing names and translated to capability names here so the
+# rest of this module keeps one vocabulary. The table is replaced wholesale on
+# every catalog resolution, so an override removed in Settings stops applying
+# without a restart. Lookup is by model id first because the runtime often
+# asks under a *normalized* binding (an Anthropic-format custom endpoint is
+# asked about as ``anthropic``) while the catalog stores the vendor binding.
+CATALOG_CAPABILITY_FIELDS: dict[str, str] = {
+    "tools": "supports_tools",
+    "vision": "supports_vision",
+    "json_output": "supports_response_format",
+}
+_CATALOG_OVERRIDES: dict[str, dict[str, dict[str, bool]]] = {}
+_catalog_overrides_lock = threading.Lock()
+
+
+def set_catalog_capability_overrides(
+    entries: Iterable[tuple[str, str, Mapping[str, bool]]],
+) -> None:
+    """Replace the user-declared overrides with ``(binding, model, caps)`` rows."""
+    table: dict[str, dict[str, dict[str, bool]]] = {}
+    for binding, model, overrides in entries:
+        model_key = (model or "").strip().lower()
+        if not model_key:
+            continue
+        caps = {
+            CATALOG_CAPABILITY_FIELDS[key]: bool(value)
+            for key, value in overrides.items()
+            if key in CATALOG_CAPABILITY_FIELDS and isinstance(value, bool)
+        }
+        if caps:
+            table.setdefault(model_key, {})[(binding or "").strip().lower()] = caps
+    with _catalog_overrides_lock:
+        _CATALOG_OVERRIDES.clear()
+        _CATALOG_OVERRIDES.update(table)
+
+
+def catalog_capability_override(
+    binding: str | None,
+    model: str | None,
+    capability: str,
+) -> bool | None:
+    """The user's explicit answer for *capability*, or ``None`` when unset."""
+    model_key = (model or "").strip().lower()
+    if not model_key:
+        return None
+    with _catalog_overrides_lock:
+        by_binding = _CATALOG_OVERRIDES.get(model_key)
+        if not by_binding:
+            return None
+        caps = by_binding.get((binding or "").strip().lower()) or next(iter(by_binding.values()))
+        value = caps.get(capability)
+    return value if isinstance(value, bool) else None
+
+
+def effective_capabilities(binding: str | None, model: str | None) -> dict[str, bool]:
+    """What the built-in tables say for *binding*/*model*, ignoring overrides.
+
+    The settings UI shows these as the value "Auto" currently resolves to.
+    """
+    return {
+        key: bool(_static_capability(binding or "openai", capability, model, default=False))
+        for key, capability in CATALOG_CAPABILITY_FIELDS.items()
+    }
+
+
 def get_capability(
     binding: str,
     capability: str,
@@ -358,6 +440,7 @@ def get_capability(
     Get a capability value for a provider/model combination.
 
     Checks in order:
+    0. Explicit per-model overrides from the model catalog
     1. Model-specific overrides (matched by prefix)
     2. Provider/binding capabilities
     3. Default capabilities for unknown providers
@@ -372,11 +455,29 @@ def get_capability(
     Returns:
         Capability value or default
     """
+    declared = catalog_capability_override(binding, model, capability)
+    if declared is not None:
+        return declared
+    return _static_capability(binding, capability, model, default)
+
+
+def _static_capability(
+    binding: str,
+    capability: str,
+    model: str | None = None,
+    default: object = None,
+) -> object:
     binding_lower = (binding or "openai").lower()
 
     # 1. Check model-specific overrides first
     if model:
-        model_lower = model.lower()
+        # Google's model list returns resource names ("models/gemini-2.5-flash")
+        # while every MODEL_OVERRIDES key is a bare id, so a catalog-supplied id
+        # missed each vendor rule and fell through to the binding default. The
+        # embedding layer already strips this prefix (see embedding_endpoint.py
+        # and embedding/adapters/gemini.py); match the same normalized form here
+        # so "Vision: Auto" resolves identically for both spellings (#1579).
+        model_lower = model.lower().removeprefix("models/")
         # Sort by pattern length descending to match most specific first
         for pattern, overrides in sorted(MODEL_OVERRIDES.items(), key=lambda x: -len(x[0])):
             if model_lower.startswith(pattern):
@@ -424,6 +525,31 @@ def is_response_format_disabled_at_runtime(binding: str | None, model: str | Non
     if not binding or not model:
         return False
     return (binding.lower(), model.lower()) in _RUNTIME_DISABLED_RESPONSE_FORMAT
+
+
+# Runtime cache for providers that refuse to be told *which* tool to call.
+# Keyed by (binding_lower, model_lower), populated when a request naming a
+# function is rejected (DeepSeek V4 with thinking: "Thinking mode does not
+# support this tool_choice"). Recorded so the next forced round asks for
+# ``"required"`` up front instead of paying for a failed request first.
+_RUNTIME_DISABLED_FORCED_TOOL_CHOICE: set[tuple[str, str]] = set()
+
+
+def disable_forced_tool_choice_at_runtime(binding: str | None, model: str | None) -> None:
+    """Mark a (binding, model) pair as unable to have one tool forced."""
+    if not binding or not model:
+        return
+    _RUNTIME_DISABLED_FORCED_TOOL_CHOICE.add((binding.lower(), model.lower()))
+
+
+def is_forced_tool_choice_disabled_at_runtime(
+    binding: str | None,
+    model: str | None,
+) -> bool:
+    """Whether this pair was recorded by :func:`disable_forced_tool_choice_at_runtime`."""
+    if not binding or not model:
+        return False
+    return (binding.lower(), model.lower()) in _RUNTIME_DISABLED_FORCED_TOOL_CHOICE
 
 
 def supports_response_format(binding: str, model: str | None = None) -> bool:
@@ -523,6 +649,22 @@ def supports_vision(binding: str, model: str | None = None) -> bool:
     return bool(value)
 
 
+def supports_vision_declared(
+    declared: object, binding: str | None, model: str | None = None
+) -> bool:
+    """Vision support, with a model's own declaration winning over the tables.
+
+    Catalog capability overrides register against the provider the runtime may
+    detect from ``base_url``, which is not always the profile's declared
+    binding, so the declaration has to be honoured before the lookup. The
+    settings picker and the save-time gate both use this rule, otherwise they
+    disagree about the same model (#2037 follow-up).
+    """
+    if type(declared) is bool:
+        return declared
+    return supports_vision(binding, model)
+
+
 def supports_vision_url(binding: str, model: str | None = None) -> bool:
     """Whether the provider accepts remote URL image references.
 
@@ -579,7 +721,7 @@ def get_effective_temperature(
 #: supplies, so each request carries the turn's own session id. Stated here
 #: rather than tested inline: the chat loop and the explore capability both
 #: need it, and neither should have to name a provider to run a turn.
-SESSION_SCOPED_BINDINGS: frozenset[str] = frozenset({"codebuddy"})
+SESSION_SCOPED_BINDINGS: frozenset[str] = frozenset({"codebuddy", "openai_codex", "claude_code"})
 
 
 def threads_session_id(binding: str | None) -> bool:
@@ -588,12 +730,16 @@ def threads_session_id(binding: str | None) -> bool:
 
 
 __all__ = [
+    "CATALOG_CAPABILITY_FIELDS",
     "PROVIDER_CAPABILITIES",
     "SESSION_SCOPED_BINDINGS",
     "threads_session_id",
     "MODEL_OVERRIDES",
     "DEFAULT_CAPABILITIES",
+    "catalog_capability_override",
+    "effective_capabilities",
     "get_capability",
+    "set_catalog_capability_overrides",
     "supports_response_format",
     "supports_streaming",
     "system_in_messages",
@@ -604,4 +750,6 @@ __all__ = [
     "get_effective_temperature",
     "disable_response_format_at_runtime",
     "is_response_format_disabled_at_runtime",
+    "disable_forced_tool_choice_at_runtime",
+    "is_forced_tool_choice_disabled_at_runtime",
 ]

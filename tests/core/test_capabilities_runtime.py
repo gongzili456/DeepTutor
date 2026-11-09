@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import os
+from pathlib import Path
 import sys
 import types
 from types import SimpleNamespace
@@ -10,16 +13,17 @@ from typing import Any
 
 import pytest
 
+import deeptutor.agents.chat.agentic_pipeline as chat_pipeline
 from deeptutor.agents.chat.capability import ChatCapability
 from deeptutor.agents.question.capability import DeepQuestionCapability
 from deeptutor.agents.research.capability import DeepResearchCapability
 from deeptutor.agents.visualize.capability import VisualizeCapability
-import deeptutor.agents.visualize.pipeline as visualize_pipeline
+from deeptutor.capabilities.ask_questions.capability import AskQuestionsCapability
 from deeptutor.capabilities.solve.capability import DeepSolveCapability
 from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
-from deeptutor.core.stream_bus import StreamBus
 from deeptutor.runtime.bootstrap.builtin_capabilities import BUILTIN_CAPABILITY_CLASSES
+from deeptutor.runtime.stream_bus import StreamBus
 
 
 def _install_module(
@@ -68,14 +72,55 @@ async def _collect_events(run_coro) -> list[StreamEvent]:
 
 def test_builtin_capability_registry_covers_documented_capabilities() -> None:
     assert set(BUILTIN_CAPABILITY_CLASSES) == {
+        "audio_overview",
         "chat",
+        "ask_questions",
         "deep_solve",
         "deep_question",
         "deep_research",
         "math_animator",
         "visualize",
         "mastery_path",
+        "immersive_reading",
+        "video_lesson",
     }
+
+
+@pytest.mark.asyncio
+async def test_ask_questions_capability_forces_card_on_selected_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    class FakePipeline:
+        def __init__(
+            self,
+            *,
+            language: str = "en",
+            initial_tool_choice: str | None = None,
+        ) -> None:
+            captured["language"] = language
+            captured["initial_tool_choice"] = initial_tool_choice
+
+        async def run(self, context: UnifiedContext, stream: StreamBus) -> None:
+            captured["ask_questions_mode"] = context.metadata.get("ask_questions_mode")
+            await stream.content("question", source="chat", stage="responding")
+
+    monkeypatch.setattr(
+        "deeptutor.capabilities.ask_questions.capability.AgenticChatPipeline",
+        FakePipeline,
+    )
+
+    context = UnifiedContext(user_message="Help me plan", language="zh")
+    capability = AskQuestionsCapability()
+    events = await _collect_events(lambda bus: capability.run(context, bus))
+
+    assert captured == {
+        "language": "zh",
+        "initial_tool_choice": "ask_user",
+        "ask_questions_mode": True,
+    }
+    assert any(event.type == StreamEventType.CONTENT for event in events)
 
 
 @pytest.mark.asyncio
@@ -270,6 +315,89 @@ async def test_deep_question_capability_uses_single_call_followup_agent(
     assert result_event.metadata["question_id"] == "q_3"
 
 
+def _held_open_by_this_process(path: Path) -> bool:
+    """Whether a descriptor of this process still points at ``path`` (Linux only)."""
+    fd_dir = Path("/proc/self/fd")
+    if not fd_dir.is_dir():
+        return False
+    target = os.path.realpath(path)
+    return any(os.path.realpath(fd) == target for fd in fd_dir.iterdir())
+
+
+@pytest.mark.asyncio
+async def test_deep_question_mimic_parses_a_closed_copy_of_the_uploaded_pdf(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # The parser reopens the paper by path. Windows refuses that while a
+    # delete-on-close NamedTemporaryFile still holds it (PermissionError);
+    # on Linux, /proc shows the same still-open handle.
+    import deeptutor.agents.question.history as question_history
+    import deeptutor.agents.question.mimic_source as mimic_source
+    import deeptutor.agents.question.pipeline as question_pipeline
+    import deeptutor.agents.question.request_config as request_config
+    import deeptutor.services.config as services_config
+
+    paper = b"%PDF-1.4\n% midterm\n"
+    captured: dict[str, Any] = {}
+
+    async def fake_parse(paper_path: str | Path, **kwargs: Any) -> tuple[list, dict]:
+        path = Path(paper_path)
+        captured["path"] = path
+        captured["held_open"] = _held_open_by_this_process(path)
+        captured["bytes"] = path.read_bytes()
+        captured["paper_mode"] = kwargs["paper_mode"]
+        return [], {}
+
+    class FakePipeline:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        async def run(self, **kwargs: Any) -> None:
+            captured["templates_override"] = kwargs["templates_override"]
+
+    async def no_history(_session_id: str) -> list:
+        return []
+
+    monkeypatch.setattr(mimic_source, "parse_exam_paper_to_templates", fake_parse)
+    monkeypatch.setattr(question_pipeline, "QuestionPipeline", FakePipeline)
+    monkeypatch.setattr(question_history, "load_session_quiz_history", no_history)
+    monkeypatch.setattr(request_config, "build_question_runtime_config", lambda **_kw: {})
+    monkeypatch.setattr(services_config, "load_config_with_main", lambda _name: {})
+
+    context = UnifiedContext(
+        user_message="Make questions like this paper",
+        language="en",
+        attachments=[
+            Attachment(
+                type="pdf",
+                filename="midterm.pdf",
+                mime_type="application/pdf",
+                base64=base64.b64encode(paper).decode(),
+            )
+        ],
+        config_overrides={"mode": "mimic"},
+    )
+    capability = DeepQuestionCapability()
+    await _collect_events(
+        lambda bus: capability._run_mimic_mode(
+            context=context,
+            stream=bus,
+            kb_name=None,
+            output_dir=tmp_path,
+            overrides={"mode": "mimic"},
+            history_context="",
+            num_questions=1,
+        )
+    )
+
+    assert captured["paper_mode"] == "upload"
+    assert captured["bytes"] == paper
+    assert captured["held_open"] is False
+    assert captured["templates_override"] == []
+    assert not captured["path"].exists()  # the temporary copy is cleaned up
+
+
 @pytest.mark.asyncio
 async def test_deep_research_capability_delegates_to_pipeline(
     monkeypatch: pytest.MonkeyPatch,
@@ -368,46 +496,52 @@ async def test_deep_research_capability_delegates_to_pipeline(
 
 
 @pytest.mark.asyncio
-async def test_visualize_capability_passes_attachments_to_analysis_agent(
+async def test_visualize_capability_reuses_chat_loop_and_preserves_attachments(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: dict[str, Any] = {}
 
-    class FakeAnalysis:
-        render_type = "svg"
-        description = "A diagram"
-        data_description = "diagram data"
-
-        def model_dump(self) -> dict[str, Any]:
-            return {
-                "render_type": self.render_type,
-                "description": self.description,
-                "data_description": self.data_description,
-            }
-
-    class FakeVisualizePipeline:
+    class FakeAgenticChatPipeline:
         def __init__(self, **kwargs: Any) -> None:
             captured["init"] = kwargs
+            self.usage = None
 
-        async def run_analysis(self, **kwargs: Any) -> FakeAnalysis:
-            captured["analysis"] = kwargs
-            return FakeAnalysis()
-
-        async def run_code_generation(self, **kwargs: Any) -> str:
-            captured["code_generation"] = kwargs
-            # Valid per validate_visualization (well-formed XML + camelCase
-            # viewBox), so the capability takes the no-repair path.
-            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>'
+        async def run(self, context: UnifiedContext, stream: StreamBus) -> dict[str, Any]:
+            _ = stream
+            captured["attachments"] = context.attachments
+            context.metadata["_visualizer_result"] = {
+                "schema_version": "deeptutor.visualization/v1",
+                "render_type": "svg",
+                "renderer": {
+                    "id": "svg",
+                    "version": "1.0.0",
+                    "target": "native",
+                    "native_renderer": "svg",
+                    "entry_url": "",
+                },
+                "payload": {
+                    "format": "image/svg+xml",
+                    "data": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>',
+                },
+                "presentation": {
+                    "title": "A diagram",
+                    "description": "diagram data",
+                    "alt_text": "A diagram",
+                    "aspect_ratio": "",
+                },
+                "interaction": {"events": []},
+                "fallback": {},
+            }
+            return {"completed": True, "rounds": 2}
 
     monkeypatch.setattr(
-        visualize_pipeline,
-        "VisualizePipeline",
-        FakeVisualizePipeline,
+        chat_pipeline,
+        "AgenticChatPipeline",
+        FakeAgenticChatPipeline,
     )
-    _install_module(
-        monkeypatch,
-        "deeptutor.services.llm.config",
-        get_llm_config=lambda: SimpleNamespace(api_key="k", base_url="u", api_version="v1"),
+    monkeypatch.setattr(
+        "deeptutor.agents.visualize.capability.get_visualize_params",
+        lambda: {"temperature": 0.23, "max_tokens": 12345},
     )
 
     context = UnifiedContext(
@@ -421,6 +555,52 @@ async def test_visualize_capability_passes_attachments_to_analysis_agent(
     capability = VisualizeCapability()
     events = await _collect_events(lambda bus: capability.run(context, bus))
 
-    assert captured["analysis"]["attachments"][0].filename == "figure.png"
+    assert captured["attachments"][0].filename == "figure.png"
+    assert "web_fetch" in context.allowed_builtin_tools
+    assert "exec" not in context.allowed_builtin_tools
+    assert "write_memory" not in context.allowed_builtin_tools
+    assert captured["init"] == {
+        "language": "en",
+        "max_rounds": 5,
+        "temperature": 0.23,
+        "max_tokens": 12345,
+        "event_source": "visualize",
+        "event_stage": "generating",
+        "emit_result": False,
+    }
     result_event = next(event for event in events if event.type == StreamEventType.RESULT)
     assert result_event.metadata["render_type"] == "svg"
+    assert result_event.metadata["engine"] == "chat_agent_loop"
+
+
+@pytest.mark.asyncio
+async def test_deep_question_rejects_empty_custom_topic_before_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Invalid input returns a clear error before workspace allocation."""
+
+    monkeypatch.setattr(
+        "deeptutor.services.llm.config.get_llm_config",
+        lambda: SimpleNamespace(api_key="", base_url="", api_version=""),
+    )
+
+    class FailingPathService:
+        def get_task_workspace(self, *_args: Any, **_kwargs: Any) -> str:
+            raise AssertionError("workspace must not be allocated for invalid input")
+
+    monkeypatch.setattr(
+        "deeptutor.services.path_service.get_path_service",
+        lambda: FailingPathService(),
+    )
+
+    context = UnifiedContext(
+        user_message="",
+        config_overrides={"mode": "custom", "topic": ""},
+        language="en",
+    )
+    events = await _collect_events(lambda bus: DeepQuestionCapability().run(context, bus))
+
+    errors = [event for event in events if event.type == StreamEventType.ERROR]
+    assert errors
+    assert "topic" in errors[-1].content.lower()
+    assert errors[-1].metadata["code"] == "topic_required"

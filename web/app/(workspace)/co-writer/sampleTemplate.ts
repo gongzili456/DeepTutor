@@ -88,7 +88,7 @@ ${FENCE}json
 {
   "app_name": "DeepTutor",
   "default_capability": "chat",
-  "enabled_tools": ["rag", "web_search", "code_execution", "reason"],
+  "enabled_tools": ["rag", "web_search", "exec", "reason"],
   "ui": {
     "co_writer_template": true
   }
@@ -106,7 +106,7 @@ ${FENCE}
 
 ### Images
 
-![](/logo-ver2.png)
+![](/brand/color-logo.png)
 
 > DeepTutor brand mark used inside the co-writer template.
 

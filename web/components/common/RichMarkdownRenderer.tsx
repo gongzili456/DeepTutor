@@ -21,11 +21,20 @@ import {
 } from "@/lib/markdown-display";
 import {
   InlineFileCard,
+  InlineWorkspaceImage,
   makeFileLinkRemarkPlugin,
   parseAttachmentHref,
   useInlineFileCardContext,
 } from "@/components/common/InlineFileCard";
-import type { MarkdownRendererProps } from "./MarkdownRenderer";
+import type { MarkdownRendererProps } from "./markdown-renderer-types";
+import { rehypeDirAuto } from "@/lib/rehype-dir-auto";
+import {
+  extractMarkdownText as extractText,
+  hasRenderableDetailsBody,
+  hasRenderableMarkdownChildren as hasRenderableChildren,
+  markdownHeadingId as headingId,
+  stripLeadingMarkdownHashes as stripLeadingHashes,
+} from "./markdown-renderer-core";
 
 function MermaidLoading() {
   const { t } = useTranslation();
@@ -56,63 +65,6 @@ type PluginBundle = {
   rehypeKatex?: unknown;
   rehypeRaw?: unknown;
 };
-
-function extractText(children: React.ReactNode): string {
-  return React.Children.toArray(children)
-    .map((child) => {
-      if (typeof child === "string" || typeof child === "number") {
-        return String(child);
-      }
-
-      if (React.isValidElement<{ children?: React.ReactNode }>(child)) {
-        return extractText(child.props.children);
-      }
-
-      return "";
-    })
-    .join("");
-}
-
-function headingId(children: React.ReactNode): string | undefined {
-  const text = extractText(children)
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, "")
-    .replace(/\s+/g, "-");
-  return text || undefined;
-}
-
-function hasRenderableChildren(children: React.ReactNode): boolean {
-  return (
-    extractText(children).replace(/[\s\u200B-\u200D\uFEFF]/g, "").length > 0
-  );
-}
-
-function hasRenderableDetailsBody(children: React.ReactNode): boolean {
-  return React.Children.toArray(children).some((child) => {
-    if (typeof child === "string" || typeof child === "number") {
-      return String(child).replace(/[\s\u200B-\u200D\uFEFF]/g, "").length > 0;
-    }
-
-    if (!React.isValidElement(child)) return false;
-    if (
-      typeof child.type === "string" &&
-      child.type.toLowerCase() === "summary"
-    ) {
-      return false;
-    }
-
-    return true;
-  });
-}
-
-function stripLeadingHashes(children: React.ReactNode): React.ReactNode {
-  const arr = React.Children.toArray(children);
-  if (arr.length > 0 && typeof arr[0] === "string") {
-    const cleaned = arr[0].replace(/^#{1,6}\s+/, "");
-    if (cleaned !== arr[0]) return [cleaned, ...arr.slice(1)];
-  }
-  return children;
-}
 
 function sourceLineAttr(node: any): { "data-source-line"?: number } {
   const line = node?.position?.start?.line;
@@ -153,11 +105,13 @@ function scrollAnchorIntoView(target: HTMLElement): void {
 
 export default function RichMarkdownRenderer({
   content,
+  learningTextSize,
   className = "",
   variant = "default",
   enableMath = false,
   enableCode = false,
   enableMermaid = false,
+  enableImages = true,
   allowHtml = false,
   trackSourceLines = false,
 }: MarkdownRendererProps) {
@@ -267,7 +221,7 @@ export default function RichMarkdownRenderer({
         {children}
       </div>
     ),
-    pre: ({ children }: any) => <>{children}</>,
+    pre: ({ children }: any) => <div dir="ltr">{children}</div>,
     code: ({ node, children }: any) => (
       <code className="rounded bg-[var(--muted)] px-1 py-0.5 font-mono text-[0.95em] text-[var(--foreground)]/90">
         {String(children).replace(/\n$/, "")}
@@ -448,7 +402,7 @@ export default function RichMarkdownRenderer({
     ),
     th: ({ node, ...props }: any) => (
       <th
-        className={`border-b border-[var(--border)] text-left font-semibold text-[var(--foreground)] ${cellPad}`}
+        className={`border-b border-[var(--border)] text-start font-semibold text-[var(--foreground)] ${cellPad}`}
         {...props}
       />
     ),
@@ -467,7 +421,7 @@ export default function RichMarkdownRenderer({
     tr: ({ node, ...props }: any) => (
       <tr className="transition-colors hover:bg-[var(--muted)]/60" {...props} />
     ),
-    pre: ({ children }: any) => <>{children}</>,
+    pre: ({ children }: any) => <div dir="ltr">{children}</div>,
     code: ({ node, className: blockClassName, children, ...props }: any) => {
       const raw = String(children).replace(/\n$/, "");
       const langMatch = /language-([A-Za-z0-9_+#.-]+)/.exec(
@@ -479,7 +433,7 @@ export default function RichMarkdownRenderer({
 
       if (lang === "mermaid" && enableMermaid) {
         return (
-          <div {...lineProps}>
+          <div className="learning-text-excluded" {...lineProps}>
             <LazyMermaid chart={raw} className={gap} />
           </div>
         );
@@ -498,7 +452,7 @@ export default function RichMarkdownRenderer({
             : convertSequenceFenceToMermaid(raw);
         if (converted) {
           return (
-            <div {...lineProps}>
+            <div className="learning-text-excluded" {...lineProps}>
               <LazyMermaid chart={converted} className={gap} />
             </div>
           );
@@ -517,7 +471,7 @@ export default function RichMarkdownRenderer({
         const ggbPayloadId = metaMatch?.[1]?.trim() || undefined;
         const ggbTitle = metaMatch?.[2]?.trim() || undefined;
         return (
-          <div {...lineProps}>
+          <div className="learning-text-excluded" {...lineProps}>
             <GeogebraOpenCTA
               script={raw}
               payloadId={ggbPayloadId}
@@ -533,7 +487,7 @@ export default function RichMarkdownRenderer({
       // theme instead of the washed-out fallback panel.
       if (isMultiline && enableCode) {
         return (
-          <div {...lineProps}>
+          <div className="learning-text-excluded" {...lineProps}>
             <LazyCodeBlock raw={raw} lang={lang || "text"} className={gap} />
           </div>
         );
@@ -563,6 +517,7 @@ export default function RichMarkdownRenderer({
 
       return (
         <code
+          dir="ltr"
           className="md-inline-code rounded bg-[var(--muted)] px-1.5 py-0.5 font-mono text-[0.875em] text-[var(--foreground)]"
           {...props}
         >
@@ -648,19 +603,33 @@ export default function RichMarkdownRenderer({
         </a>
       );
     },
-    img: ({ node, src, alt, ...props }: any) => (
-      <img
-        src={src}
-        alt={alt || ""}
-        loading="lazy"
-        className={`${gap} inline-block max-w-full rounded-lg border border-[var(--border)]`}
-        {...lineAttr(node)}
-        {...props}
-      />
-    ),
+    img: ({ node, src, alt, ...props }: any) => {
+      if (!enableImages) return null;
+      const attachmentName = parseAttachmentHref(src);
+      const className = `${gap} inline-block max-w-full rounded-lg border border-[var(--border)]`;
+      if (attachmentName) {
+        return (
+          <InlineWorkspaceImage
+            name={attachmentName}
+            alt={alt || ""}
+            className={className}
+          />
+        );
+      }
+      return (
+        <img
+          src={src}
+          alt={alt || ""}
+          loading="lazy"
+          className={className}
+          {...lineAttr(node)}
+          {...props}
+        />
+      );
+    },
     blockquote: ({ node, ...props }: any) => (
       <blockquote
-        className={`${gap} border-l-[3px] border-[var(--muted-foreground)] pl-4 italic text-[var(--muted-foreground)] [&>p]:mb-1`}
+        className={`${gap} border-s-[3px] border-[var(--muted-foreground)] ps-4 italic text-[var(--muted-foreground)] [&>p]:mb-1`}
         {...lineAttr(node)}
         {...props}
       />
@@ -711,7 +680,14 @@ export default function RichMarkdownRenderer({
   const components = useMemo(
     () => (isTrace ? traceComponents : normalComponents),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- components only change with variant/feature flags
-    [isTrace, variant, enableMermaid, enableCode, trackSourceLines],
+    [
+      isTrace,
+      variant,
+      enableMermaid,
+      enableCode,
+      enableImages,
+      trackSourceLines,
+    ],
   );
 
   const rootClasses = isTrace
@@ -724,8 +700,12 @@ export default function RichMarkdownRenderer({
   // clickable file links (no-op outside a chat message — fileCtx is null).
   const fileCtx = useInlineFileCardContext();
   const fileLinkPlugin = useMemo(
-    () => makeFileLinkRemarkPlugin(fileCtx?.files ?? []),
-    [fileCtx?.files],
+    () =>
+      makeFileLinkRemarkPlugin(
+        fileCtx?.files ?? [],
+        fileCtx?.unresolvedRelativeLinksAsText,
+      ),
+    [fileCtx?.files, fileCtx?.unresolvedRelativeLinksAsText],
   );
   const remarkPlugins = useMemo(() => {
     const p: Array<any> = [remarkGfm];
@@ -738,11 +718,21 @@ export default function RichMarkdownRenderer({
     const p: Array<any> = [];
     if (allowHtml && plugins.rehypeRaw) p.push(plugins.rehypeRaw as never);
     if (enableMath && plugins.rehypeKatex) p.push(plugins.rehypeKatex as never);
+    p.push(rehypeDirAuto);
     return p;
   }, [allowHtml, enableMath, plugins.rehypeRaw, plugins.rehypeKatex]);
 
   return (
-    <div className={`${rootClasses} ${className}`}>
+    <div
+      className={`${rootClasses} ${className} ${learningTextSize && !isTrace ? "learning-text" : ""}`}
+      style={
+        learningTextSize && !isTrace
+          ? ({
+              "--learning-text-base": `${learningTextSize}px`,
+            } as React.CSSProperties)
+          : undefined
+      }
+    >
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
         rehypePlugins={rehypePlugins}

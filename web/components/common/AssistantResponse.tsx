@@ -4,11 +4,19 @@ import { Fragment, memo, useMemo } from "react";
 
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import ModelThinkingCard from "@/components/common/ModelThinkingCard";
+import { useReading } from "@/context/ReadingContext";
+import type { StreamEvent } from "@/features/chat/model/protocol";
 import {
   hasVisibleMarkdownContent,
+  repairChineseEmphasis,
   repairMalformedStrongEmphasis,
   stripArtifactAnnotations,
 } from "@/lib/markdown-display";
+import {
+  linkifyLocatorCitations,
+  verifiedReadingLocators,
+} from "@/lib/reading-citations";
+import { linkifyMediaTimestamps } from "@/lib/reading-media-citations";
 import { parseModelThinkingSegments } from "@/lib/think-segments";
 import { useSmoothStreamText } from "@/hooks/useSmoothStreamText";
 
@@ -24,17 +32,67 @@ interface AssistantResponseProps {
    * in that case.
    */
   isStreaming?: boolean;
+  readingMaterialId?: string;
+  readingMaterialRevision?: number;
+  events?: StreamEvent[];
+  language?: string;
 }
 
 function AssistantResponseImpl({
   content,
   className = "text-[16px] leading-[1.75]",
   isStreaming = false,
+  readingMaterialId,
+  readingMaterialRevision,
+  events,
+  language,
 }: AssistantResponseProps) {
   const displayContent = useSmoothStreamText(content, isStreaming);
+  // A locator becomes interactive only when this turn's persisted reading-tool
+  // events prove it belongs to the material that was open for the turn. The
+  // currently open material is used only for an extra range check; it never
+  // supplies identity for a historical answer.
+  const { material } = useReading();
+  const verifiedLocators = useMemo(
+    () =>
+      verifiedReadingLocators(
+        events,
+        readingMaterialId,
+        readingMaterialRevision,
+      ),
+    [events, readingMaterialId, readingMaterialRevision],
+  );
+  const citedContent = useMemo(() => {
+    if (
+      material?.unit === "segment" &&
+      (!readingMaterialId || material.material_id === readingMaterialId) &&
+      (!readingMaterialRevision ||
+        material.revision === readingMaterialRevision)
+    ) {
+      return linkifyMediaTimestamps(displayContent);
+    }
+    return readingMaterialId && verifiedLocators.size > 0
+      ? linkifyLocatorCitations(displayContent, {
+          materialId: readingMaterialId,
+          materialRevision: readingMaterialRevision,
+          allowedLocators: verifiedLocators,
+          ...(material?.material_id === readingMaterialId &&
+          (!readingMaterialRevision ||
+            material.revision === readingMaterialRevision)
+            ? { maxLocator: material.unit_count }
+            : {}),
+        })
+      : displayContent;
+  }, [
+    displayContent,
+    material,
+    readingMaterialId,
+    readingMaterialRevision,
+    verifiedLocators,
+  ]);
   const segments = useMemo(
-    () => parseModelThinkingSegments(stripArtifactAnnotations(displayContent)),
-    [displayContent],
+    () => parseModelThinkingSegments(stripArtifactAnnotations(citedContent)),
+    [citedContent],
   );
 
   // Decide whether the message has anything worth rendering. We consider both
@@ -72,7 +130,12 @@ function AssistantResponseImpl({
             />
           );
         }
-        const repairedContent = repairMalformedStrongEmphasis(segment.content);
+        const repairedContent = isStreaming
+          ? repairMalformedStrongEmphasis(segment.content)
+          : repairChineseEmphasis(
+              repairMalformedStrongEmphasis(segment.content),
+              language,
+            );
 
         if (!hasVisibleMarkdownContent(repairedContent)) {
           return <Fragment key={`text-${index}`} />;
@@ -83,6 +146,7 @@ function AssistantResponseImpl({
             key={`text-${index}`}
             content={repairedContent}
             variant="prose"
+            learningTextSize={16}
             className="text-[var(--foreground)]"
           />
         );

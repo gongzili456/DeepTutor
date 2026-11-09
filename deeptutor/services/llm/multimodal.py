@@ -23,7 +23,7 @@ from .capabilities import supports_vision, supports_vision_url
 logger = logging.getLogger(__name__)
 
 MIME_FALLBACK = "image/png"
-_LOCAL_ATTACHMENT_PREFIX = "/api/attachments/"
+_LOCAL_ATTACHMENT_PREFIX = "/files/attachments/"
 
 
 @dataclass
@@ -84,7 +84,7 @@ def _build_anthropic_image_part(
 
 
 def _resolve_local_attachment_url(url: str) -> tuple[str, str] | None:
-    """Resolve a ``/api/attachments/<sid>/<aid>/<name>`` URL to (base64, mime).
+    """Resolve a ``/files/attachments/<sid>/<aid>/<name>`` URL to (base64, mime).
 
     External URLs (http/https) are not fetched here — that would be sync
     network IO inside an async-friendly path and a security footgun. Returns
@@ -210,16 +210,14 @@ def _inject_images(
 
     dropped = 0
     for att in image_attachments:
-        mime = getattr(att, "mime_type", "") or _guess_mime_type(
-            getattr(att, "filename", "image.png")
-        )
+        mime = getattr(att, "mime_type", "") or ""
         b64 = getattr(att, "base64", "") or ""
         url = getattr(att, "url", "") or ""
 
         if not b64 and not url:
             continue
 
-        # Local AttachmentStore URLs ("/api/attachments/...") are server-
+        # Local AttachmentStore URLs ("/files/attachments/...") are server-
         # relative paths and are never valid to send to an external LLM
         # provider — even providers that accept image URLs would receive a
         # path they can't fetch. Resolve them to base64 unconditionally so
@@ -246,6 +244,12 @@ def _inject_images(
                 )
                 dropped += 1
                 continue
+
+        # Fall back to the filename guess only after an explicit mime_type and
+        # the MIME resolved from the stored attachment have both been tried, so
+        # a resolved image/jpeg is not overridden by the image/png default.
+        if not mime:
+            mime = _guess_mime_type(getattr(att, "filename", "image.png"))
 
         if anthropic:
             if not b64:

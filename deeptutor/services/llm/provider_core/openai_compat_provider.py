@@ -9,31 +9,54 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 import hashlib
+import inspect
+import re
 import secrets
 import string
+import sys
 import time
 from typing import TYPE_CHECKING, Any
-import uuid
+from urllib.parse import urlsplit
 
 import json_repair
+from loguru import logger
 from openai import AsyncOpenAI
 
-from deeptutor.services.llm.capabilities import disable_response_format_at_runtime
-from deeptutor.services.llm.openai_http_client import openai_client_kwargs
+from deeptutor.services.keypool import KeyPool
+from deeptutor.services.llm.capabilities import (
+    disable_forced_tool_choice_at_runtime,
+    disable_response_format_at_runtime,
+    is_forced_tool_choice_disabled_at_runtime,
+)
+from deeptutor.services.llm.exceptions import LLMConfigError
+from deeptutor.services.llm.openai_http_client import openai_sdk_client_kwargs
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, ToolCallRequest
 from deeptutor.services.llm.provider_core.openai_responses import (
+    ToolArgsDeltaHook,
     adapt_chat_kwargs_to_responses,
     consume_sdk_stream,
     convert_messages,
+    convert_tool_choice,
     convert_tools,
+    mark_stable_history_breakpoint,
     parse_response_output,
+    supports_explicit_prompt_cache,
 )
 from deeptutor.services.llm.reasoning_params import (
     build_openai_compatible_reasoning_kwargs,
 )
+from deeptutor.services.llm.request_compat import (
+    is_forced_tool_choice_unsupported,
+    is_response_format_unsupported,
+)
+from deeptutor.services.llm.usage_frame import usage_breakdown
+from deeptutor.services.provider_registry import model_overrides_for, normalize_wire_api
+from deeptutor.services.session.provider_response_state import (
+    normalize_provider_response_state,
+)
 
 if TYPE_CHECKING:
-    from deeptutor.services.provider_registry import ProviderSpec
+    pass
 
 _ALLOWED_MSG_KEYS = frozenset(
     {
@@ -44,16 +67,18 @@ _ALLOWED_MSG_KEYS = frozenset(
         "name",
         "reasoning_content",
         "extra_content",
+        "_provider_response_state",
+        "_responses_output_items",
     }
 )
 _ALNUM = string.ascii_letters + string.digits
 
-_DEFAULT_OPENROUTER_HEADERS = {
-    "HTTP-Referer": "https://github.com/HKUDS/DeepTutor",
-    "X-OpenRouter-Title": "DeepTutor",
-}
+_INTERNAL_RESPONSE_STATE_KEYS = frozenset({"_provider_response_state", "_responses_output_items"})
+
 _RESPONSES_FAILURE_THRESHOLD = 2
 _RESPONSES_PROBE_INTERVAL_S = 300.0
+_INPUT_ITEM_STATUS_PARAM = re.compile(r"^input\[(0|[1-9][0-9]*)\]\.status$")
+_MAX_INPUT_ITEM_INDEX_DIGITS = len(str(sys.maxsize))
 
 
 def _short_tool_id() -> str:
@@ -65,6 +90,60 @@ def _get(obj: Any, key: str) -> Any:
     if isinstance(obj, dict):
         return obj.get(key)
     return getattr(obj, key, None)
+
+
+def _tool_call_slot(buffers: dict[int, dict[str, Any]], tc_delta: Any) -> int:
+    """Buffer slot for a streamed tool-call delta.
+
+    Providers that send no ``index`` (Gemini's and Mistral's compatible
+    endpoints) are told apart by ``id``: a new one starts the next call, a
+    delta without one continues the last.
+    """
+    index = _get(tc_delta, "index")
+    tc_id = _get(tc_delta, "id")
+    if index is not None:
+        slot = int(index)
+    elif tc_id and any(buf["id"] == str(tc_id) for buf in buffers.values()):
+        slot = next(key for key, buf in buffers.items() if buf["id"] == str(tc_id))
+    elif not buffers:
+        slot = 0
+    else:
+        last = next(reversed(buffers))
+        slot = max(buffers) + 1 if tc_id and buffers[last]["id"] else last
+    # Recency is independent of the wire index: an id-less fragment continues
+    # the last addressed call, including a resumed earlier call. Final responses
+    # use sorted slots so this bookkeeping does not reorder calls.
+    if slot in buffers:
+        buffers[slot] = buffers.pop(slot)
+    return slot
+
+
+def _accumulate_streamed_tool_call(
+    buffers: dict[int, dict[str, str]],
+    tc_delta: Any,
+) -> dict[str, str] | None:
+    """Fold one live ``delta.tool_calls`` entry into *buffers*, return it.
+
+    ``id`` and ``name`` arrive complete on whichever chunk carries them and
+    are assigned; ``arguments`` arrives in fragments and is concatenated
+    (appending a repeated ``id`` is issue #937). The id falls back to the
+    stream index so a provider that streams arguments before an id still
+    yields something a consumer can correlate previews by.
+    """
+    index = _tool_call_slot(buffers, tc_delta)
+    buffer = buffers.setdefault(index, {"id": "", "name": "", "arguments": ""})
+    tc_id = _get(tc_delta, "id")
+    if tc_id:
+        buffer["id"] = str(tc_id)
+    fn = _get(tc_delta, "function")
+    if fn is not None:
+        fn_name = _get(fn, "name")
+        if fn_name:
+            buffer["name"] = str(fn_name)
+        fn_args = _get(fn, "arguments")
+        if fn_args:
+            buffer["arguments"] += str(fn_args)
+    return {**buffer, "id": buffer["id"] or f"call_{index}"}
 
 
 def _coerce_dict(value: Any) -> dict[str, Any] | None:
@@ -80,10 +159,17 @@ def _coerce_dict(value: Any) -> dict[str, Any] | None:
     return None
 
 
-def _uses_openrouter(spec: "ProviderSpec | None", api_base: str | None) -> bool:
-    if spec and spec.name == "openrouter":
-        return True
-    return bool(api_base and "openrouter" in api_base.lower())
+def _provider_state_output_items(message: dict[str, Any]) -> list[dict[str, Any]]:
+    state = normalize_provider_response_state(message.get("_provider_response_state"))
+    items = state.get("responses_output_items") if state is not None else None
+    if not isinstance(items, list):
+        legacy_state = normalize_provider_response_state(
+            {"responses_output_items": message.get("_responses_output_items")}
+        )
+        items = legacy_state.get("responses_output_items") if legacy_state is not None else None
+    if not isinstance(items, list):
+        return []
+    return [dict(item) for item in items if isinstance(item, dict)]
 
 
 def _is_direct_openai_base(api_base: str | None) -> bool:
@@ -112,39 +198,92 @@ class OpenAICompatProvider(LLMProvider):
 
     def __init__(
         self,
-        api_key: str | None = None,
+        api_key: str | list[str] | None = None,
         api_base: str | None = None,
         default_model: str = "gpt-4o",
         extra_headers: dict[str, str] | None = None,
         spec: Any = None,
         provider_name: str | None = None,
+        wire_api: str = "auto",
+        configure_env: bool = True,
     ):
-        super().__init__(api_key, api_base)
+        keys = api_key if isinstance(api_key, list) else [api_key]
+        keys = [str(key).strip() for key in keys if str(key or "").strip()]
+        primary_key = keys[0] if keys else None
+        super().__init__(primary_key, api_base)
+        self._key_pool = KeyPool(keys) if keys else None
         self.default_model = default_model
         self.extra_headers = extra_headers or {}
         self._spec = spec
         self._provider_name = provider_name
+        self._wire_api = normalize_wire_api(wire_api)
 
-        if api_key and spec and spec.env_key:
-            self._setup_env(api_key, api_base)
+        if configure_env and primary_key and spec and spec.env_key:
+            self._setup_env(primary_key, api_base)
 
         effective_base = api_base or (spec.default_api_base if spec else None) or None
         self._effective_base = effective_base
-        default_headers: dict[str, str] = {"x-session-affinity": uuid.uuid4().hex}
-        if _uses_openrouter(spec, effective_base):
-            default_headers.update(_DEFAULT_OPENROUTER_HEADERS)
-        if extra_headers:
-            default_headers.update(extra_headers)
-
+        endpoint = (effective_base or "").rstrip("/")
+        # api_key may be a list (key pool); only the resolved primary key
+        # counts for the configured-key check.
+        placeholder_key = primary_key in {None, "", "no-key", "sk-no-key-required"}
+        if (
+            provider_name == "openai"
+            and (not endpoint or endpoint == "https://api.openai.com/v1")
+            and placeholder_key
+        ):
+            raise LLMConfigError(
+                "OpenAI API key is not configured. Set it in Settings > Providers, "
+                "or select a local provider such as Ollama."
+            )
         self._client = AsyncOpenAI(
-            api_key=api_key or "no-key",
-            base_url=effective_base,
-            default_headers=default_headers,
-            max_retries=0,
-            **openai_client_kwargs(),
+            **openai_sdk_client_kwargs(
+                api_key=primary_key or "no-key",
+                base_url=effective_base,
+                extra_headers=extra_headers,
+                spec=spec,
+                sdk_max_retries=0,
+            )
         )
+        try:
+            self._prompt_cache_options_supported = (
+                "prompt_cache_options"
+                in inspect.signature(self._client.responses.create).parameters
+            )
+        except (AttributeError, TypeError, ValueError):
+            # Test stubs and older SDK facades may expose no Responses client.
+            self._prompt_cache_options_supported = False
         self._responses_failures: dict[str, int] = {}
         self._responses_tripped_at: dict[str, float] = {}
+        self._responses_without_message_status_models: set[str] = set()
+        self._responses_without_prompt_cache_models: set[str] = set()
+
+    @staticmethod
+    def _status_code(exc: Exception) -> int | None:
+        return getattr(exc, "status_code", None) or getattr(
+            getattr(exc, "response", None), "status_code", None
+        )
+
+    async def _create_with_key_rotation(self, create, kwargs: dict[str, Any]) -> Any:
+        if not self._key_pool:
+            return await create(**kwargs)
+        api_key = self._key_pool.next()
+        attempts = max(2, len(self._key_pool))
+        for attempt in range(attempts):
+            request = dict(kwargs)
+            headers = dict(request.get("extra_headers") or {})
+            headers["Authorization"] = f"Bearer {api_key}"
+            request["extra_headers"] = headers
+            try:
+                return await create(**request)
+            except Exception as exc:
+                if self._status_code(exc) != 429:
+                    raise
+                self._key_pool.mark_429(api_key)
+                if attempt == attempts - 1:
+                    raise
+                api_key = self._key_pool.next()
+        raise RuntimeError("LLM key rotation exhausted")
 
     def _setup_env(self, api_key: str, api_base: str | None) -> None:
         import os
@@ -167,41 +306,97 @@ class OpenAICompatProvider(LLMProvider):
     # Prompt caching
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _mark_cache_control(msg: dict[str, Any]) -> dict[str, Any]:
+        """Attach an ephemeral cache breakpoint to a message's last block."""
+        cache_marker = {"type": "ephemeral"}
+        content = msg.get("content")
+        if isinstance(content, str):
+            return {
+                **msg,
+                "content": [
+                    {"type": "text", "text": content, "cache_control": cache_marker},
+                ],
+            }
+        if isinstance(content, list) and content:
+            new_content = list(content)
+            new_content[-1] = {**new_content[-1], "cache_control": cache_marker}
+            return {**msg, "content": new_content}
+        return msg
+
     @classmethod
     def _apply_cache_control(
         cls,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None,
+        *,
+        stable_history_end: bool = False,
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
         cache_marker = {"type": "ephemeral"}
         new_messages = list(messages)
+        budget = 4
 
         def _mark(msg: dict[str, Any]) -> dict[str, Any]:
-            content = msg.get("content")
-            if isinstance(content, str):
-                return {
-                    **msg,
-                    "content": [
-                        {"type": "text", "text": content, "cache_control": cache_marker},
-                    ],
-                }
-            if isinstance(content, list) and content:
-                nc = list(content)
-                nc[-1] = {**nc[-1], "cache_control": cache_marker}
-                return {**msg, "content": nc}
-            return msg
+            return cls._mark_cache_control(msg)
 
         if new_messages and new_messages[0].get("role") == "system":
             new_messages[0] = _mark(new_messages[0])
-        if len(new_messages) >= 3:
-            new_messages[-2] = _mark(new_messages[-2])
+            budget -= 1
+        if len(new_messages) >= 2:
+            new_messages[-1] = _mark(new_messages[-1])
+            budget -= 1
+
+        if stable_history_end and budget > 0:
+            # The loop appends a transient per-turn context message just before
+            # the learner's message and never persists it, so a breakpoint on
+            # the last message alone leaves the next turn's prefix diverging at
+            # that transient block. Mark the end of the durable history — the
+            # last non-empty message before the trailing user turn — so the
+            # previous turn's prefix still matches and can be reused.
+            index = cls._stable_history_end_index(new_messages)
+            if index is not None:
+                new_messages[index] = _mark(new_messages[index])
+                budget -= 1
 
         new_tools = tools
         if tools:
             new_tools = list(tools)
-            for idx in cls._tool_cache_marker_indices(new_tools):
+            for idx in cls._tool_cache_marker_indices(new_tools)[:budget]:
                 new_tools[idx] = {**new_tools[idx], "cache_control": cache_marker}
         return new_messages, new_tools
+
+    @staticmethod
+    def _stable_history_end_index(messages: list[dict[str, Any]]) -> int | None:
+        """Index of the last persisted message before the trailing user turn.
+
+        Walks back over the final user block (the transient context message and
+        the learner's message share the ``user`` role) and skips empty text
+        blocks, which cannot carry ``cache_control``. Returns ``None`` when the
+        marker would fall outside the request.
+        """
+        start = len(messages) - 1
+        while start > 0 and messages[start].get("role") != "user":
+            start -= 1
+        while start > 1 and messages[start - 1].get("role") == "user":
+            start -= 1
+        index = start - 1
+        while index > 0 and not messages[index].get("content"):
+            index -= 1
+        if 0 < index < len(messages) - 1:
+            return index
+        return None
+
+    @classmethod
+    def supports_prompt_caching_for(cls, model: str | None) -> bool:
+        """Whether *model* uses explicit ``cache_control`` breakpoints.
+
+        Anthropic models reached through an OpenAI-compatible gateway cache
+        only when the request carries breakpoints, and only those families
+        understand the marker. Kept here so the agent loop and the provider
+        agree on the same gate.
+        """
+        name = str(model or "").lower()
+        return name.startswith(("anthropic/", "claude"))
 
     # ------------------------------------------------------------------
     # Message sanitization
@@ -215,8 +410,55 @@ class OpenAICompatProvider(LLMProvider):
             return tool_call_id
         return hashlib.sha256(tool_call_id.encode()).hexdigest()[:9]
 
-    def _sanitize_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        sanitized = LLMProvider._sanitize_request_messages(messages, _ALLOWED_MSG_KEYS)
+    def _sanitize_messages(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        responses_api: bool = False,
+    ) -> list[dict[str, Any]]:
+        prepared: list[dict[str, Any]] = []
+        for message in messages:
+            if not isinstance(message, dict):
+                prepared.append(message)
+                continue
+            clean = {
+                key: value
+                for key, value in message.items()
+                if key not in _INTERNAL_RESPONSE_STATE_KEYS
+            }
+            if responses_api:
+                output_items = _provider_state_output_items(message)
+                if output_items:
+                    clean["_provider_response_state"] = {"responses_output_items": output_items}
+            else:
+                # Replay the round's own reasoning on the assistant turn that
+                # produced it. A thinking model's provider rejects a history
+                # that lost it ("the reasoning_content in the thinking mode
+                # must be passed back to the API"), and only a provider that
+                # SENT ``reasoning_content``/``reasoning`` can have put it in
+                # this state — so replaying it is symmetric, never additive.
+                #
+                # This used to be gated on ``"deepseek" in model``, which is
+                # not how a model announces the dialect: Volcengine Ark takes
+                # an endpoint id (``ep-…``) as the model name, and Doubao /
+                # GLM / Qwen / Kimi thinking models speak the same field under
+                # their own names. Every one of them lost its reasoning the
+                # moment a turn replayed history, while the *same* round
+                # inside one turn kept it (the loop sets the field directly).
+                state = normalize_provider_response_state(message.get("_provider_response_state"))
+                reasoning_content = state.get("reasoning_content") if state is not None else None
+                if isinstance(reasoning_content, str) and reasoning_content:
+                    clean.setdefault("reasoning_content", reasoning_content)
+            prepared.append(clean)
+
+        sanitized = LLMProvider._sanitize_request_messages(prepared, _ALLOWED_MSG_KEYS)
+        if responses_api:
+            # Responses function calls use the provider-issued ``call_id`` as
+            # a protocol identity. The converter splits DeepTutor's compound
+            # ``call_id|item_id`` form itself; hashing it here would make the
+            # later function_call_output point at a different call than the
+            # replayed native function_call item.
+            return sanitized
         id_map: dict[str, str] = {}
 
         def map_id(value: Any) -> Any:
@@ -251,6 +493,9 @@ class OpenAICompatProvider(LLMProvider):
         if reasoning_effort and reasoning_effort.lower() != "none":
             return False
         name = model_name.lower()
+        family = name.removeprefix("openai/")
+        if family == "gpt-6" or family.startswith(("gpt-6-", "gpt-6.")):
+            return False
         return not any(token in name for token in ("gpt-5", "o1", "o3", "o4"))
 
     def _build_kwargs(
@@ -286,18 +531,13 @@ class OpenAICompatProvider(LLMProvider):
         else:
             kwargs["max_tokens"] = max(1, max_tokens)
 
-        if spec:
-            model_lower = model_name.lower()
-            for pattern, overrides in spec.model_overrides:
-                if pattern in model_lower:
-                    for key, value in overrides.items():
-                        # None means "drop this parameter" — e.g. Kimi models
-                        # reject any explicit temperature and must be sent none.
-                        if value is None:
-                            kwargs.pop(key, None)
-                        else:
-                            kwargs[key] = value
-                    break
+        for key, value in model_overrides_for(model_name, spec).items():
+            # None means "drop this parameter" — e.g. Kimi models reject any
+            # explicit temperature and must be sent none.
+            if value is None:
+                kwargs.pop(key, None)
+            else:
+                kwargs[key] = value
 
         kwargs.update(
             build_openai_compatible_reasoning_kwargs(
@@ -310,7 +550,7 @@ class OpenAICompatProvider(LLMProvider):
 
         if tools:
             kwargs["tools"] = tools
-            kwargs["tool_choice"] = tool_choice or "auto"
+            kwargs["tool_choice"] = self._effective_tool_choice(tool_choice, model) or "auto"
 
         return kwargs
 
@@ -318,8 +558,16 @@ class OpenAICompatProvider(LLMProvider):
         self,
         model: str | None,
         reasoning_effort: str | None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> bool:
+        if self._wire_api == "responses":
+            return True
+        if self._wire_api == "chat_completions":
+            return False
+
         spec = self._spec
+        if self._uses_native_web_search(model, tools):
+            return self._responses_circuit_allows(model, reasoning_effort)
         if spec and spec.name not in {"openai", "github_copilot"}:
             return False
         if spec is None or spec.name != "github_copilot":
@@ -334,6 +582,13 @@ class OpenAICompatProvider(LLMProvider):
         if not wants_responses:
             return False
 
+        return self._responses_circuit_allows(model, reasoning_effort)
+
+    def _responses_circuit_allows(
+        self,
+        model: str | None,
+        reasoning_effort: str | None,
+    ) -> bool:
         circuit_key = _responses_circuit_key(model, self.default_model, reasoning_effort)
         failures = self._responses_failures.get(circuit_key, 0)
         if failures >= _RESPONSES_FAILURE_THRESHOLD:
@@ -341,6 +596,25 @@ class OpenAICompatProvider(LLMProvider):
             if (time.monotonic() - tripped_at) < _RESPONSES_PROBE_INTERVAL_S:
                 return False
         return True
+
+    def _uses_native_web_search(
+        self,
+        model: str | None,
+        tools: list[dict[str, Any]] | None,
+    ) -> bool:
+        patterns = {
+            str(name).strip().lower()
+            for name in getattr(self._spec, "native_web_search_models", ())
+            if str(name).strip()
+        }
+        model_name = (model or self.default_model or "").strip().lower().split("/")[-1]
+        if model_name not in patterns:
+            return False
+        return any(
+            ((tool.get("function") or {}).get("name") == "web_search")
+            for tool in tools or []
+            if isinstance(tool, dict) and tool.get("type") == "function"
+        )
 
     def _record_responses_failure(self, model: str | None, reasoning_effort: str | None) -> None:
         circuit_key = _responses_circuit_key(model, self.default_model, reasoning_effort)
@@ -353,6 +627,146 @@ class OpenAICompatProvider(LLMProvider):
         circuit_key = _responses_circuit_key(model, self.default_model, reasoning_effort)
         self._responses_failures.pop(circuit_key, None)
         self._responses_tripped_at.pop(circuit_key, None)
+
+    @staticmethod
+    def _input_item_status_index(fields: Any) -> int | None:
+        parameter = _get(fields, "param")
+        match = (
+            _INPUT_ITEM_STATUS_PARAM.fullmatch(parameter)
+            if _get(fields, "code") == "unknown_parameter" and isinstance(parameter, str)
+            else None
+        )
+        if match is None:
+            return None
+        index_text = match.group(1)
+        if len(index_text) > _MAX_INPUT_ITEM_INDEX_DIGITS:
+            return None
+        try:
+            item_index = int(index_text)
+        except ValueError:
+            return None
+        return item_index if item_index <= sys.maxsize else None
+
+    @classmethod
+    def _rejected_input_item_status_index(cls, exc: Exception) -> int | None:
+        if cls._status_code(exc) not in {400, 422}:
+            return None
+        for body in (getattr(exc, "body", None), getattr(exc, "doc", None)):
+            if not isinstance(body, dict):
+                continue
+            error = body.get("error")
+            fields: dict[str, Any] = error if isinstance(error, dict) else body
+            if (item_index := cls._input_item_status_index(fields)) is not None:
+                return item_index
+        return None
+
+    @staticmethod
+    def _responses_body_without_input_message_status(
+        body: dict[str, Any], item_index: int | None = None
+    ) -> dict[str, Any] | None:
+        input_items = body.get("input")
+        if not isinstance(input_items, list):
+            return None
+
+        if item_index is not None:
+            if item_index >= len(input_items):
+                return None
+            rejected_item = input_items[item_index]
+            if not isinstance(rejected_item, dict) or "status" not in rejected_item:
+                return None
+
+        sanitized_items: list[Any] = []
+        has_status = False
+        for item in input_items:
+            if isinstance(item, dict) and "status" in item:
+                sanitized_items.append(
+                    {key: value for key, value in item.items() if key != "status"}
+                )
+                has_status = True
+            else:
+                sanitized_items.append(item)
+        return {**body, "input": sanitized_items} if has_status else None
+
+    @staticmethod
+    def _responses_body_without_prompt_cache(body: dict[str, Any]) -> dict[str, Any]:
+        """Strip explicit-cache fields for a provider that rejected them."""
+
+        sanitized = {key: value for key, value in body.items() if key != "prompt_cache_options"}
+        input_items = body.get("input")
+        if not isinstance(input_items, list):
+            return sanitized
+        cleaned_items: list[Any] = []
+        for item in input_items:
+            if not isinstance(item, dict):
+                cleaned_items.append(item)
+                continue
+            content = item.get("content")
+            if not isinstance(content, list):
+                cleaned_items.append(item)
+                continue
+            cleaned_content = []
+            for block in content:
+                if isinstance(block, dict) and "prompt_cache_breakpoint" in block:
+                    cleaned_content.append(
+                        {
+                            key: value
+                            for key, value in block.items()
+                            if key != "prompt_cache_breakpoint"
+                        }
+                    )
+                else:
+                    cleaned_content.append(block)
+            cleaned_items.append({**item, "content": cleaned_content})
+        return {**sanitized, "input": cleaned_items}
+
+    @classmethod
+    def _is_prompt_cache_rejection(cls, exc: Exception) -> bool:
+        status_code = cls._status_code(exc)
+        if status_code not in {400, 422}:
+            return False
+        response = getattr(exc, "response", None)
+        body = (
+            getattr(exc, "body", None)
+            or getattr(exc, "doc", None)
+            or (getattr(response, "text", None) if response is not None else None)
+        )
+        return "prompt_cache" in str(body).lower()
+
+    async def _create_responses_with_status_retry(
+        self,
+        body: dict[str, Any],
+    ) -> Any:
+        model_name = str(body.get("model") or self.default_model).strip().lower()
+        request_body = body
+        if model_name in self._responses_without_message_status_models:
+            request_body = self._responses_body_without_input_message_status(body) or body
+        try:
+            return await self._create_with_key_rotation(self._client.responses.create, request_body)
+        except Exception as exc:
+            if self._is_prompt_cache_rejection(exc):
+                return await self._retry_without_prompt_cache(model_name, request_body)
+            item_index = self._rejected_input_item_status_index(exc)
+            if item_index is None:
+                raise
+            retry_body = self._responses_body_without_input_message_status(request_body, item_index)
+            if retry_body is None:
+                raise
+            self._responses_without_message_status_models.add(model_name)
+            try:
+                return await self._create_with_key_rotation(
+                    self._client.responses.create, retry_body
+                )
+            except Exception as retry_exc:
+                if not self._is_prompt_cache_rejection(retry_exc):
+                    raise
+                return await self._retry_without_prompt_cache(model_name, retry_body)
+
+    async def _retry_without_prompt_cache(self, model_name: str, body: dict[str, Any]) -> Any:
+        """Retry once without explicit cache fields and remember the refusal."""
+
+        self._responses_without_prompt_cache_models.add(model_name)
+        fallback = self._responses_body_without_prompt_cache(body)
+        return await self._create_with_key_rotation(self._client.responses.create, fallback)
 
     @staticmethod
     def _should_fallback_from_responses_error(exc: Exception) -> bool:
@@ -369,7 +783,7 @@ class OpenAICompatProvider(LLMProvider):
             or getattr(response, "text", None)
         )
         body_text = str(body).lower() if body is not None else ""
-        return any(
+        endpoint_unsupported = any(
             marker in body_text
             for marker in (
                 "responses",
@@ -383,23 +797,94 @@ class OpenAICompatProvider(LLMProvider):
                 "not supported",
             )
         )
+        # DeepSeek V4 reports a very specific three-part error when a
+        # Responses continuation cannot replay its prior reasoning item.  Keep
+        # these markers conjunctive: each phrase on its own is common in
+        # unrelated validation errors and must not trip the circuit breaker.
+        reasoning_replay_rejected = (
+            any(field in body_text for field in ("reasoning_text", "reasoning_content"))
+            and "thinking mode" in body_text
+            and "passed back" in body_text
+        )
+        return endpoint_unsupported or reasoning_replay_rejected
 
     @staticmethod
     def _is_response_format_error(exc: Exception) -> bool:
-        text = str(getattr(exc, "body", None) or getattr(exc, "message", None) or exc).lower()
-        if "response_format" not in text and "response format" not in text:
+        return is_response_format_unsupported(exc)
+
+    def _binding_name(self) -> str:
+        return self._provider_name or (self._spec.name if self._spec else "openai")
+
+    def _effective_tool_choice(
+        self,
+        tool_choice: str | dict[str, Any] | None,
+        model: str | None,
+    ) -> str | dict[str, Any] | None:
+        """Soften a forced tool for a provider already known to refuse one.
+
+        Naming the tool is an optimisation, not the contract: ``"required"``
+        still says a tool must be called, and the loop wraps the model's own
+        question into a card if it answers in prose anyway. Only pairs
+        recorded by a previous rejection are softened, so a provider that
+        honours a forced tool keeps getting one.
+        """
+        if not self._names_a_tool(tool_choice):
+            return tool_choice
+        if is_forced_tool_choice_disabled_at_runtime(
+            self._binding_name(), model or self.default_model
+        ):
+            return "required"
+        return tool_choice
+
+    @staticmethod
+    def _names_a_tool(tool_choice: Any) -> bool:
+        if not isinstance(tool_choice, dict):
             return False
-        return any(
-            marker in text
-            for marker in (
-                "not supported",
-                "unsupported",
-                "json_object",
-                "json_schema",
-                "must be 'json_schema' or 'text'",
-                "specified for 'response_format.type' is not valid",
-            )
+        return bool(tool_choice.get("name") or (tool_choice.get("function") or {}).get("name"))
+
+    def _note_forced_tool_choice_rejected(
+        self,
+        exc: Exception,
+        tool_choice: str | dict[str, Any] | None,
+        model: str | None,
+    ) -> bool:
+        """Record a refusal to force one tool; True when a retry is worth it."""
+        if not self._names_a_tool(tool_choice):
+            return False
+        if not is_forced_tool_choice_unsupported(exc):
+            return False
+        target = model or self.default_model
+        # loguru formats with ``{}``, not printf placeholders.
+        logger.warning(
+            "provider refused a forced tool_choice for model={}; retrying with "
+            "tool_choice=required. error={}",
+            target,
+            str(exc)[:200],
         )
+        disable_forced_tool_choice_at_runtime(self._binding_name(), target)
+        return True
+
+    def _supports_explicit_prompt_cache(self, model_name: str) -> bool:
+        """Gate explicit breakpoints to native OpenAI GPT-5.6+.
+
+        Other OpenAI-compatible endpoints often reject unknown fields, so the
+        marker stays off unless the binding is the official endpoint (or a
+        custom binding pointed at it).
+        """
+        if not supports_explicit_prompt_cache(model_name):
+            return False
+        if not getattr(self, "_prompt_cache_options_supported", False):
+            return False
+        if str(model_name or "").strip().lower() in self._responses_without_prompt_cache_models:
+            return False
+        spec_name = str(getattr(self._spec, "name", "") or "").lower()
+        if spec_name == "openai":
+            return True
+        try:
+            host = (urlsplit(self._effective_base or "").hostname or "").lower()
+        except ValueError:
+            return False
+        return host == "api.openai.com"
 
     def _build_responses_body(
         self,
@@ -416,7 +901,7 @@ class OpenAICompatProvider(LLMProvider):
             model_name = model_name.split("/")[-1]
 
         instructions, input_items = convert_messages(
-            self._sanitize_messages(self._sanitize_empty_content(messages))
+            self._sanitize_messages(self._sanitize_empty_content(messages), responses_api=True)
         )
         body: dict[str, Any] = {
             "model": model_name,
@@ -426,15 +911,32 @@ class OpenAICompatProvider(LLMProvider):
             "store": False,
             "stream": False,
         }
+        if self._supports_explicit_prompt_cache(model_name):
+            if mark_stable_history_breakpoint(input_items):
+                # Explicit-only mode: the breakpoint above is the reusable
+                # prefix. Last-turn assistant text and tool output stay
+                # uncached but small; the next turn matches everything before
+                # the trailing runtime snapshot (#2297).
+                body["prompt_cache_options"] = {"mode": "explicit", "ttl": "30m"}
 
         if self._supports_temperature(model_name, reasoning_effort):
             body["temperature"] = temperature
+        for key, value in model_overrides_for(model_name, self._spec).items():
+            if value is None:
+                body.pop(key, None)
+            else:
+                body[key] = value
         if reasoning_effort and reasoning_effort.lower() != "none":
             body["reasoning"] = {"effort": reasoning_effort}
             body["include"] = ["reasoning.encrypted_content"]
         if tools:
-            body["tools"] = convert_tools(tools)
-            body["tool_choice"] = tool_choice or "auto"
+            body["tools"] = convert_tools(
+                tools,
+                native_web_search=self._uses_native_web_search(model, tools),
+            )
+            body["tool_choice"] = (
+                convert_tool_choice(self._effective_tool_choice(tool_choice, model)) or "auto"
+            )
         return body
 
     # ------------------------------------------------------------------
@@ -478,27 +980,12 @@ class OpenAICompatProvider(LLMProvider):
 
     @classmethod
     def _extract_usage(cls, response: Any) -> dict[str, int]:
-        usage_obj = None
         response_map = cls._maybe_mapping(response)
         if response_map is not None:
             usage_obj = response_map.get("usage")
-        elif hasattr(response, "usage") and response.usage:
-            usage_obj = response.usage
-
-        usage_map = cls._maybe_mapping(usage_obj)
-        if usage_map is not None:
-            return {
-                "prompt_tokens": int(usage_map.get("prompt_tokens") or 0),
-                "completion_tokens": int(usage_map.get("completion_tokens") or 0),
-                "total_tokens": int(usage_map.get("total_tokens") or 0),
-            }
-        if usage_obj:
-            return {
-                "prompt_tokens": getattr(usage_obj, "prompt_tokens", 0) or 0,
-                "completion_tokens": getattr(usage_obj, "completion_tokens", 0) or 0,
-                "total_tokens": getattr(usage_obj, "total_tokens", 0) or 0,
-            }
-        return {}
+        else:
+            usage_obj = getattr(response, "usage", None)
+        return usage_breakdown(usage_obj)
 
     def _parse(self, response: Any) -> LLMResponse:
         if isinstance(response, str):
@@ -521,8 +1008,6 @@ class OpenAICompatProvider(LLMProvider):
                     finish_reason = ch.finish_reason
             if not content and m.content:
                 content = m.content
-            if not content and getattr(m, "reasoning", None):
-                content = m.reasoning
 
         tool_calls = []
         for tc in raw_tool_calls:
@@ -545,6 +1030,12 @@ class OpenAICompatProvider(LLMProvider):
         if not reasoning_content and getattr(msg, "reasoning", None):
             reasoning_content = msg.reasoning
 
+        # ``reasoning`` is a private trace on gateways such as OpenRouter.  It
+        # must never be promoted to visible content when the provider omits a
+        # final answer (the old fallback here leaked untagged scratchpads).
+        if content and reasoning_content and content == reasoning_content:
+            content = None
+
         usage = self._extract_usage(response)
 
         return LLMResponse(
@@ -562,28 +1053,6 @@ class OpenAICompatProvider(LLMProvider):
         tc_bufs: dict[int, dict[str, Any]] = {}
         finish_reason = "stop"
         usage: dict[str, int] = {}
-
-        def _accum_tc(tc: Any, idx_hint: int) -> None:
-            tc_index: int = _get(tc, "index") if _get(tc, "index") is not None else idx_hint
-            buf = tc_bufs.setdefault(
-                tc_index,
-                {
-                    "id": "",
-                    "name": "",
-                    "arguments": "",
-                },
-            )
-            tc_id = _get(tc, "id")
-            if tc_id:
-                buf["id"] = str(tc_id)
-            fn = _get(tc, "function")
-            if fn is not None:
-                fn_name = _get(fn, "name")
-                if fn_name:
-                    buf["name"] = str(fn_name)
-                fn_args = _get(fn, "arguments")
-                if fn_args:
-                    buf["arguments"] += str(fn_args)
 
         for chunk in chunks:
             if isinstance(chunk, str):
@@ -617,7 +1086,7 @@ class OpenAICompatProvider(LLMProvider):
                 if reasoning:
                     reasoning_parts.append(reasoning)
             for tc in (delta.tool_calls or []) if delta else []:
-                _accum_tc(tc, getattr(tc, "index", 0))
+                _accumulate_streamed_tool_call(tc_bufs, tc)
 
         content = "".join(content_parts) or None
         reasoning_content = "".join(reasoning_parts) or None
@@ -630,7 +1099,7 @@ class OpenAICompatProvider(LLMProvider):
                     name=b["name"],
                     arguments=json_repair.loads(b["arguments"]) if b["arguments"] else {},
                 )
-                for b in tc_bufs.values()
+                for _, b in sorted(tc_bufs.items())
             ],
             finish_reason=finish_reason,
             usage=usage,
@@ -664,13 +1133,11 @@ class OpenAICompatProvider(LLMProvider):
         well-formed response.
         """
         text = str(getattr(e, "body", None) or getattr(e, "message", None) or e).lower()
-        return any(
-            kw in text
-            for kw in (
-                "function.arguments",
-                "must be in json format",
-                "invalid.*parameter.*function",
-            )
+        return (
+            any(kw in text for kw in ("function.arguments", "must be in json format"))
+            # Regex marker — must be searched, not membership-tested, or the
+            # ``.*`` is taken literally and the marker never matches.
+            or re.search(r"invalid.*parameter.*function", text) is not None
         )
 
     async def chat(
@@ -685,7 +1152,7 @@ class OpenAICompatProvider(LLMProvider):
         **extra_kwargs: Any,
     ) -> LLMResponse:
         try:
-            if self._should_use_responses_api(model, reasoning_effort):
+            if self._should_use_responses_api(model, reasoning_effort, tools):
                 try:
                     body = self._build_responses_body(
                         messages,
@@ -697,11 +1164,15 @@ class OpenAICompatProvider(LLMProvider):
                         tool_choice,
                     )
                     body.update(adapt_chat_kwargs_to_responses(extra_kwargs))
-                    result = parse_response_output(await self._client.responses.create(**body))
+                    result = parse_response_output(
+                        await self._create_responses_with_status_retry(body)
+                    )
                     self._record_responses_success(model, reasoning_effort)
                     return result
                 except Exception as responses_error:
                     if self._spec and self._spec.name == "github_copilot":
+                        raise
+                    if self._wire_api == "responses":
                         raise
                     if not self._should_fallback_from_responses_error(responses_error):
                         raise
@@ -718,7 +1189,11 @@ class OpenAICompatProvider(LLMProvider):
             )
             request_kwargs.update({k: v for k, v in extra_kwargs.items() if v is not None})
             try:
-                return self._parse(await self._client.chat.completions.create(**request_kwargs))
+                return self._parse(
+                    await self._create_with_key_rotation(
+                        self._client.chat.completions.create, request_kwargs
+                    )
+                )
             except Exception as exc:
                 if request_kwargs.get(
                     "response_format"
@@ -727,9 +1202,26 @@ class OpenAICompatProvider(LLMProvider):
                     disable_response_format_at_runtime(binding, request_kwargs.get("model"))
                     retry_kwargs = dict(request_kwargs)
                     retry_kwargs.pop("response_format", None)
-                    return self._parse(await self._client.chat.completions.create(**retry_kwargs))
+                    return self._parse(
+                        await self._create_with_key_rotation(
+                            self._client.chat.completions.create, retry_kwargs
+                        )
+                    )
                 raise
         except Exception as e:
+            if self._note_forced_tool_choice_rejected(e, tool_choice, model):
+                # ``"required"`` cannot be refused for the same reason, so this
+                # retries at most once.
+                return await self.chat(
+                    messages,
+                    tools,
+                    model,
+                    max_tokens,
+                    temperature,
+                    reasoning_effort,
+                    "required",
+                    **extra_kwargs,
+                )
             if tools and self._is_tool_format_error(e):
                 return await self.chat_stream(
                     messages,
@@ -754,6 +1246,10 @@ class OpenAICompatProvider(LLMProvider):
         tool_choice: str | dict[str, Any] | None = None,
         on_content_delta: Callable[[str], Awaitable[None]] | None = None,
         on_reasoning_delta: Callable[[str], Awaitable[None]] | None = None,
+        # Declared, never forwarded to the wire: ``extra_kwargs`` becomes
+        # request body below, so a callback passed through it would be
+        # serialised into the request.
+        on_tool_args_delta: ToolArgsDeltaHook | None = None,
         **extra_kwargs: Any,
     ) -> LLMResponse:
         request_kwargs = self._build_kwargs(
@@ -768,7 +1264,7 @@ class OpenAICompatProvider(LLMProvider):
         request_kwargs.update({k: v for k, v in extra_kwargs.items() if v is not None})
         idle_timeout_s = 90
         try:
-            if self._should_use_responses_api(model, reasoning_effort):
+            if self._should_use_responses_api(model, reasoning_effort, tools):
                 try:
                     body = self._build_responses_body(
                         messages,
@@ -781,7 +1277,7 @@ class OpenAICompatProvider(LLMProvider):
                     )
                     body.update(adapt_chat_kwargs_to_responses(extra_kwargs))
                     body["stream"] = True
-                    stream = await self._client.responses.create(**body)
+                    stream = await self._create_responses_with_status_retry(body)
 
                     async def _timed_stream():
                         stream_iter = stream.__aiter__()
@@ -794,6 +1290,18 @@ class OpenAICompatProvider(LLMProvider):
                             except StopAsyncIteration:
                                 break
 
+                    native_output_items: list[dict[str, Any]] = []
+                    native_citations: list[dict[str, Any]] = []
+
+                    def _collect_provider_event(
+                        kind: str,
+                        payload: dict[str, Any],
+                    ) -> None:
+                        if kind == "output_item":
+                            native_output_items.append(payload)
+                        elif kind == "citation":
+                            native_citations.append(payload)
+
                     (
                         content,
                         tool_calls,
@@ -804,7 +1312,15 @@ class OpenAICompatProvider(LLMProvider):
                         _timed_stream(),
                         on_content_delta,
                         on_reasoning_delta=on_reasoning_delta,
+                        on_provider_event=_collect_provider_event,
+                        on_tool_args_delta=on_tool_args_delta,
                     )
+                    if not any(item.get("type") == "reasoning" for item in native_output_items):
+                        native_output_items = [
+                            item
+                            for item in native_output_items
+                            if item.get("type") in {"web_search_call", "web_search"}
+                        ]
                     self._record_responses_success(model, reasoning_effort)
                     return LLMResponse(
                         content=content or None,
@@ -812,9 +1328,19 @@ class OpenAICompatProvider(LLMProvider):
                         finish_reason=finish_reason,
                         usage=usage,
                         reasoning_content=reasoning_content,
+                        provider_specific_fields=(
+                            {
+                                "native_output_items": native_output_items,
+                                "citations": native_citations,
+                            }
+                            if native_output_items or native_citations
+                            else {}
+                        ),
                     )
                 except Exception as responses_error:
                     if self._spec and self._spec.name == "github_copilot":
+                        raise
+                    if self._wire_api == "responses":
                         raise
                     if not self._should_fallback_from_responses_error(responses_error):
                         raise
@@ -824,7 +1350,9 @@ class OpenAICompatProvider(LLMProvider):
             if self._spec is None or self._spec.supports_stream_options:
                 request_kwargs["stream_options"] = {"include_usage": True}
             try:
-                stream = await self._client.chat.completions.create(**request_kwargs)
+                stream = await self._create_with_key_rotation(
+                    self._client.chat.completions.create, request_kwargs
+                )
             except Exception as exc:
                 if request_kwargs.get(
                     "response_format"
@@ -833,12 +1361,18 @@ class OpenAICompatProvider(LLMProvider):
                     disable_response_format_at_runtime(binding, request_kwargs.get("model"))
                     retry_kwargs = dict(request_kwargs)
                     retry_kwargs.pop("response_format", None)
-                    stream = await self._client.chat.completions.create(**retry_kwargs)
+                    stream = await self._create_with_key_rotation(
+                        self._client.chat.completions.create, retry_kwargs
+                    )
                 else:
                     raise
 
             chunks: list[Any] = []
             stream_iter = stream.__aiter__()
+            # Mirrors the accumulation ``_parse_chunks`` does after the fact,
+            # but live, so ``on_tool_args_delta`` can report a call while it is
+            # still being written. The authoritative parse stays below.
+            streaming_tool_args: dict[int, dict[str, str]] = {}
             while True:
                 try:
                     chunk = await asyncio.wait_for(
@@ -860,6 +1394,15 @@ class OpenAICompatProvider(LLMProvider):
                         text = getattr(delta, "content", None)
                         if text:
                             await on_content_delta(text)
+                    if on_tool_args_delta and delta is not None:
+                        for tc in getattr(delta, "tool_calls", None) or []:
+                            buffered = _accumulate_streamed_tool_call(streaming_tool_args, tc)
+                            if buffered is not None and buffered["name"]:
+                                await on_tool_args_delta(
+                                    buffered["id"],
+                                    buffered["name"],
+                                    buffered["arguments"],
+                                )
             return self._parse_chunks(chunks)
         except asyncio.TimeoutError:
             return LLMResponse(
@@ -867,6 +1410,24 @@ class OpenAICompatProvider(LLMProvider):
                 finish_reason="error",
             )
         except Exception as e:
+            if self._note_forced_tool_choice_rejected(e, tool_choice, model):
+                # Safe to replay: the refusal happens when the request is
+                # created, so no part of a response has been streamed yet.
+                # ``"required"`` cannot be refused for the same reason, so
+                # this retries at most once.
+                return await self.chat_stream(
+                    messages,
+                    tools,
+                    model,
+                    max_tokens,
+                    temperature,
+                    reasoning_effort,
+                    "required",
+                    on_content_delta,
+                    on_reasoning_delta,
+                    on_tool_args_delta,
+                    **extra_kwargs,
+                )
             return self._handle_error(e)
 
     def get_default_model(self) -> str:

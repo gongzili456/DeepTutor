@@ -68,7 +68,7 @@ def test_run_command_json_mode(monkeypatch) -> None:
     assert captured_requests[0].tools == ["rag"]
     assert captured_requests[0].knowledge_bases == ["demo-kb"]
     assert captured_requests[0].history_references == ["session-old"]
-    assert captured_requests[0].notebook_references == [
+    assert [ref.model_dump() for ref in captured_requests[0].notebook_references] == [
         {"notebook_id": "nb1", "record_ids": ["rec1", "rec2"]}
     ]
     assert {request.capability for request in captured_requests} == set(capabilities)
@@ -78,6 +78,7 @@ def test_builtin_capability_aliases_resolve_to_canonical_names() -> None:
     runtime = DeepTutorApp()
 
     assert runtime.resolve_capability("solve") == "deep_solve"
+    assert runtime.resolve_capability("ask") == "ask_questions"
     assert runtime.resolve_capability("quiz") == "deep_question"
     assert runtime.resolve_capability("research") == "deep_research"
     assert runtime.resolve_capability("viz") == "visualize"
@@ -223,20 +224,79 @@ def test_session_list_command_uses_shared_store(monkeypatch) -> None:
     assert "Algebra" in result.output
 
 
+def test_session_show_json_prints_the_stored_session(monkeypatch) -> None:
+    session = {
+        "id": "session-1",
+        "title": "Fourier [draft]",
+        "messages": [
+            {"role": "user", "content": "Explain the Fourier transform"},
+            {
+                "role": "assistant",
+                "content": (
+                    "A signal can be written as a sum of sines and cosines; see "
+                    "[the lecture notes](https://example.org/ft) for the derivation. :tada:"
+                ),
+            },
+        ],
+    }
+
+    async def _get_session(self, session_id: str):  # noqa: ANN001
+        return session if session_id == "session-1" else None
+
+    monkeypatch.setattr("deeptutor.app.facade.DeepTutorApp.get_session", _get_session)
+
+    result = runner.invoke(app, ["session", "show", "session-1", "--format", "json"])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == session
+
+
 def test_start_command_delegates_to_runtime_launcher(monkeypatch) -> None:
     calls: list[object] = []
 
-    def _fake_start(home=None, *, dev=False):  # noqa: ANN001
-        calls.append((home, dev))
+    def _fake_start(  # noqa: ANN001
+        home=None,
+        *,
+        dev=False,
+        detach=False,
+        open_browser=True,
+    ):
+        calls.append((home, dev, detach, open_browser))
 
     monkeypatch.setattr("deeptutor.runtime.launcher.start", _fake_start)
 
     result = runner.invoke(app, ["start"])
 
     assert result.exit_code == 0, result.output
-    assert calls == [(None, False)]
+    assert calls == [(None, False, False, True)]
 
-    result = runner.invoke(app, ["start", "--dev"])
+    result = runner.invoke(app, ["start", "--dev", "--detach", "--no-browser"])
 
     assert result.exit_code == 0, result.output
-    assert calls[-1] == (None, True)
+    assert calls[-1] == (None, True, True, False)
+
+
+def test_stop_command_delegates_to_detached_launcher(monkeypatch) -> None:
+    calls: list[object] = []
+    monkeypatch.setattr(
+        "deeptutor.runtime.launcher.stop",
+        lambda home=None: calls.append(home) or True,
+    )
+
+    result = runner.invoke(app, ["stop"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [None]
+
+
+def test_malformed_notebook_ref_in_repl_does_not_crash_the_session() -> None:
+    from deeptutor_cli.chat import ChatState, _apply_command
+
+    state = ChatState()
+    # A bad `/notebook add` ref must be reported in-loop (like every other
+    # command), not raise and tear down the whole interactive session.
+    assert _apply_command("/notebook add :", state) is True
+    assert state.notebook_references == []
+
+    assert _apply_command("/notebook add nb1:rec1", state) is True
+    assert state.notebook_references == [{"notebook_id": "nb1", "record_ids": ["rec1"]}]

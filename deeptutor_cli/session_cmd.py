@@ -39,7 +39,7 @@ def register(app: typer.Typer) -> None:
     def delete_session(
         session_id: str = typer.Argument(..., help="Session id."),
     ) -> None:
-        """Delete a session and all of its turns/messages."""
+        """Move a session to the recycle bin (soft delete, recoverable)."""
         maybe_run(_delete_session(session_id))
 
     @app.command("rename")
@@ -65,7 +65,7 @@ async def _show_session(session_id: str, fmt: str) -> None:
         raise typer.Exit(code=1)
 
     if fmt == "json":
-        console.print(json.dumps(session, ensure_ascii=False, indent=2, default=str))
+        console.print_json(json.dumps(session, ensure_ascii=False, default=str))
         return
 
     console.print(f"[bold]{session.get('title', '')}[/] ({session.get('id', '')})")

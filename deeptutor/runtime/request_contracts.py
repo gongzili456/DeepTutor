@@ -2,35 +2,38 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Literal
+from collections.abc import Mapping
+from importlib import import_module
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from deeptutor.agents.math_animator.request_config import (
-    MathAnimatorRequestConfig,
-    validate_math_animator_request_config,
-)
-from deeptutor.agents.research.request_config import (
-    DeepResearchRequestConfig,
-    validate_research_request_config,
-)
-
-_RUNTIME_ONLY_KEYS = {
-    "_persist_user_message",
-    "followup_question_context",
-    # Per-turn subagent consult budget (composer stepper). Not part of any
-    # capability's public config schema; stripped here so it never trips
-    # ``extra="forbid"`` (turn_runtime carries it through to the turn config).
-    "subagent_consult_budget",
-}
+from deeptutor.modules.catalog import contribution_enabled, manifests
+from deeptutor.runtime.capability_catalog import EmptyConfig
 
 
-class ChatRequestConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class ChatRequestConfig(EmptyConfig):
+    pass
 
 
-class DeepSolveRequestConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class AskQuestionsRequestConfig(EmptyConfig):
+    pass
+
+
+class DeepSolveRequestConfig(EmptyConfig):
+    pass
+
+
+class MasteryPathRequestConfig(EmptyConfig):
+    pass
+
+
+class ImmersiveReadingRequestConfig(EmptyConfig):
+    pass
+
+
+class VideoLessonRequestConfig(EmptyConfig):
+    pass
 
 
 class DeepQuestionRequestConfig(BaseModel):
@@ -54,21 +57,29 @@ class DeepQuestionRequestConfig(BaseModel):
 class VisualizeRequestConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    render_mode: Literal[
-        "auto",
-        "svg",
-        "chartjs",
-        "mermaid",
-        "html",
-        "manim_video",
-        "manim_image",
-    ] = "auto"
+    # Visualizer ids are discovered at runtime, so this contract deliberately
+    # validates the stable id grammar rather than freezing an enum into every
+    # API client. Availability is checked against the per-user registry.
+    render_mode: str = Field(default="auto", min_length=2, max_length=64)
     # Only meaningful when the routed render_type is manim_video / manim_image
-    # (either chosen explicitly or selected by AnalysisAgent in auto mode).
-    # Mirrors MathAnimatorRequestConfig defaults so the auto path stays
-    # zero-config.
+    # (chosen explicitly; auto uses the general visualization loop).
+    # Mirrors MathAnimatorRequestConfig defaults.
     quality: Literal["low", "medium", "high"] = "medium"
     style_hint: str = Field(default="", max_length=500)
+    enable_visual_review: bool = Field(
+        default=False,
+        description="Inspect Manim frames and repair visual issues. Adds model calls and render time; ignored for other visualizers.",
+    )
+
+    @field_validator("render_mode")
+    @classmethod
+    def _valid_render_mode(cls, value: str) -> str:
+        import re
+
+        normalized = value.strip().lower()
+        if normalized != "auto" and not re.fullmatch(r"[a-z][a-z0-9_.-]{1,63}", normalized):
+            raise ValueError("must be 'auto' or a valid visualizer id")
+        return normalized
 
 
 def _clean_public_config(raw_config: dict[str, Any] | None) -> dict[str, Any]:
@@ -76,10 +87,7 @@ def _clean_public_config(raw_config: dict[str, Any] | None) -> dict[str, Any]:
         return {}
     if not isinstance(raw_config, dict):
         raise ValueError("Capability config must be an object.")
-    cleaned = dict(raw_config)
-    for key in _RUNTIME_ONLY_KEYS:
-        cleaned.pop(key, None)
-    return cleaned
+    return dict(raw_config)
 
 
 def _validate_model(
@@ -125,23 +133,59 @@ def build_request_schema(model_type: type[BaseModel]) -> dict[str, Any]:
     return model_type.model_json_schema(mode="validation")
 
 
-CAPABILITY_CONFIG_VALIDATORS: dict[str, Callable[[dict[str, Any] | None], Any]] = {
-    "chat": validate_chat_request_config,
-    "deep_solve": validate_deep_solve_request_config,
-    "deep_question": validate_deep_question_request_config,
-    "deep_research": validate_research_request_config,
-    "math_animator": validate_math_animator_request_config,
-    "visualize": validate_visualize_request_config,
-}
+class _Contracts(Mapping):
+    def __init__(self, kind: str):
+        self.kind = kind
 
-CAPABILITY_REQUEST_SCHEMAS: dict[str, dict[str, Any]] = {
-    "chat": build_request_schema(ChatRequestConfig),
-    "deep_solve": build_request_schema(DeepSolveRequestConfig),
-    "deep_question": build_request_schema(DeepQuestionRequestConfig),
-    "deep_research": build_request_schema(DeepResearchRequestConfig),
-    "math_animator": build_request_schema(MathAnimatorRequestConfig),
-    "visualize": build_request_schema(VisualizeRequestConfig),
-}
+    def __iter__(self):
+        return iter(
+            name
+            for module in manifests().values()
+            for name in module["capabilities"]
+            if contribution_enabled("capabilities", name)
+        )
+
+    def __len__(self):
+        return sum(1 for _ in self)
+
+    def __getitem__(self, name):
+        if not contribution_enabled("capabilities", name):
+            raise KeyError(name)
+        spec = next(
+            (
+                module["capabilities"][name]
+                for module in manifests().values()
+                if name in module["capabilities"]
+            ),
+            None,
+        )
+        if spec is None:
+            raise KeyError(name)
+        module, attribute = spec["config_model"].split(":")
+        model = getattr(import_module(module), attribute)
+        if self.kind == "models":
+            return model
+        if self.kind == "schemas":
+            return build_request_schema(model)
+        if "validator" in spec:
+            reference, attribute = spec["validator"].split(":")
+            return getattr(import_module(reference), attribute)
+        return lambda raw: _validate_model(model, raw, label=name.replace("_", " "))
+
+
+CAPABILITY_CONFIG_MODELS = _Contracts("models")
+CAPABILITY_CONFIG_VALIDATORS = _Contracts("validators")
+CAPABILITY_REQUEST_SCHEMAS = _Contracts("schemas")
+
+
+def __getattr__(name: str):
+    # Preserve imports used by SDK clients while leaving absent modules cold.
+    for module in manifests().values():
+        for spec in module["capabilities"].values():
+            reference, attribute = spec["config_model"].split(":")
+            if attribute == name and reference != __name__:
+                return getattr(import_module(reference), attribute)
+    raise AttributeError(name)
 
 
 def validate_capability_config(
@@ -162,10 +206,16 @@ def get_capability_request_schema(capability: str) -> dict[str, Any]:
 
 __all__ = [
     "CAPABILITY_CONFIG_VALIDATORS",
+    "CAPABILITY_CONFIG_MODELS",
     "CAPABILITY_REQUEST_SCHEMAS",
+    "AudioOverviewRequestConfig",  # noqa: F822 - lazy compatibility export
+    "AskQuestionsRequestConfig",
     "ChatRequestConfig",
     "DeepQuestionRequestConfig",
     "DeepSolveRequestConfig",
+    "ImmersiveReadingRequestConfig",
+    "MasteryPathRequestConfig",
+    "VideoLessonRequestConfig",
     "VisualizeRequestConfig",
     "build_request_schema",
     "get_capability_request_schema",
