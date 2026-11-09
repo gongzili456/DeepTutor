@@ -1,8 +1,0 @@
-schema_version: 1
-module_path: web_frontend/build_and_config
-title: Web 前端构建与开发辅助脚本集
-scope:
-    - web/scripts/
-source_files: []
-depends_on: []
-related_to: []

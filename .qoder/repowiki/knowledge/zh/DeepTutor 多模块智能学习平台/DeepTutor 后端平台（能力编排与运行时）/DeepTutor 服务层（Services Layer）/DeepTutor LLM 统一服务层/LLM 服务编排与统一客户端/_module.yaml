@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: backend/services/llm/orchestration
+title: LLM 服务编排与统一客户端
+scope:
+    - deeptutor/services/llm/client.py
+    - deeptutor/services/llm/factory.py
+    - deeptutor/services/llm/registry.py
+source_files: []
+depends_on: []
+related_to: []

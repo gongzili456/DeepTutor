@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: services/rag
-title: DeepTutor RAG 多引擎服务编排层
-scope:
-    - deeptutor/services/rag/
-source_files: []
-depends_on: []
-related_to:
-    - path: api

@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: web_frontend/components/visualize_math
-title: 可视化结果渲染器（SVG/Chart.js/Mermaid/HTML/Math Animator）
-scope:
-    - web/components/visualize/
-    - web/components/math-animator/
-source_files: []
-depends_on: []
-related_to: []

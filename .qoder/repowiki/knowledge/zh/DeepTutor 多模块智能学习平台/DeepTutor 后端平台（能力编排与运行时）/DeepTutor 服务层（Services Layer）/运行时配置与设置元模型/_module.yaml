@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/services/config
+title: 运行时配置与设置元模型
+scope:
+    - deeptutor/services/config/
+source_files: []
+depends_on: []
+related_to: []

@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/capabilities/obsidian
+title: Obsidian Vault 能力（知识检索与创作）
+scope:
+    - deeptutor/capabilities/obsidian/
+source_files: []
+depends_on: []
+related_to: []

@@ -1,8 +1,0 @@
-schema_version: 1
-module_path: services/codex_auth
-title: OpenAI Codex OAuth 认证与模型目录服务
-scope:
-    - deeptutor/services/codex_auth/
-source_files: []
-depends_on: []
-related_to: []

@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/capabilities/solve
+title: Deep Solve 解题能力
+scope:
+    - deeptutor/capabilities/solve/
+source_files: []
+depends_on: []
+related_to: []

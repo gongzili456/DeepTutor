@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: services/mcp/catalog
-title: MCP 服务目录（Catalog）
-scope:
-    - deeptutor/services/mcp/catalog/
-source_files: []
-depends_on: []
-related_to:
-    - path: services/mcp/server_runtime

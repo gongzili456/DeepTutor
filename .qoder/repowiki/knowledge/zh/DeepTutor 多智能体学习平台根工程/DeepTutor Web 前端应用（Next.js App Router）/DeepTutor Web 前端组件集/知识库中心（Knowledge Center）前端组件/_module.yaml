@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: web_frontend/components/knowledge_base
-title: 知识库中心（Knowledge Center）前端组件
-scope:
-    - web/components/knowledge/
-source_files: []
-depends_on: []
-related_to:
-    - path: api

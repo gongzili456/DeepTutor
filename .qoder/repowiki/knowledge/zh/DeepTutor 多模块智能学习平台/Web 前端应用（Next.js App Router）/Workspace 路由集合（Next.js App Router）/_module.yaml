@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: web_frontend/route_workspace
+title: Workspace 路由集合（Next.js App Router）
+scope:
+    - web/app/(workspace)/
+source_files: []
+depends_on: []
+related_to: []

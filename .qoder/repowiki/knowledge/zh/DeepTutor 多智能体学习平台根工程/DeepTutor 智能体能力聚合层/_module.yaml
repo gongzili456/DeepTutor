@@ -1,8 +1,0 @@
-schema_version: 1
-module_path: agents
-title: DeepTutor 智能体能力聚合层
-scope:
-    - deeptutor/agents/
-source_files: []
-depends_on: []
-related_to: []

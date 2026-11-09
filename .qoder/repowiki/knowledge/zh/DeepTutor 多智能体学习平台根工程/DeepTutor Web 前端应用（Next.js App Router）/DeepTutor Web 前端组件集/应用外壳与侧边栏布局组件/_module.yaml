@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: web_frontend/components/layout_shell
-title: 应用外壳与侧边栏布局组件
-scope:
-    - web/components/layout/
-    - web/components/sidebar/
-source_files: []
-depends_on: []
-related_to: []

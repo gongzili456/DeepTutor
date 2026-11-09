@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: backend/book/book_core
+title: Book Engine 核心数据模型与辅助工具
+scope:
+    - deeptutor/book/context.py
+    - deeptutor/book/inputs.py
+    - deeptutor/book/models.py
+    - deeptutor/book/streaming.py
+    - deeptutor/book/kb_health.py
+    - deeptutor/book/__init__.py
+source_files: []
+depends_on: []
+related_to: []

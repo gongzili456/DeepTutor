@@ -1,8 +1,0 @@
-schema_version: 1
-module_path: agents/notebook
-title: Notebook 分析 & 摘要 Agent
-scope:
-    - deeptutor/agents/notebook/
-source_files: []
-depends_on: []
-related_to: []

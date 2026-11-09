@@ -3,125 +3,154 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-08-15T01:31:11Z"
+exported_at: "2026-11-09T04:12:17Z"
 modules:
     "":
-        dir_name: DeepTutor 多智能体学习平台根工程
-        title: DeepTutor 多智能体学习平台根工程
+        dir_name: DeepTutor 多模块智能学习平台
+        title: DeepTutor 多模块智能学习平台
         scope:
             - README.md
             - CONTRIBUTING.md
-            - .gitignore
-            - pyproject.toml
-            - requirements.txt
-            - compose.yaml
-            - Dockerfile
-            - Dockerfile.runner
             - AGENTS.md
             - SKILL.md
+            - Communication.md
+            - CITATION.cff
+            - THIRD_PARTY_NOTICES.md
+            - .gitignore
             - .dockerignore
-            - .env.example
-            - .gitattributes
             - .pre-commit-config.yaml
             - .secrets.baseline
-            - CITATION.cff
-            - CONTAINERIZATION.md
-            - Communication.md
-            - LICENSE
-            - MANIFEST.in
-            - THIRD_PARTY_NOTICES.md
+            - pyproject.toml
+            - requirements.txt
+            - Dockerfile
+            - Dockerfile.runner
+            - compose.yaml
             - compose.codex-oauth.yaml
+            - docker-compose.yml
             - docker-compose.dev.yml
             - docker-compose.ghcr.yml
-            - docker-compose.yml
+            - .env.example
+            - .gitattributes
+            - .importlinter
+            - CODE_OF_CONDUCT.md
+            - CONTRIBUTING_CN.md
+            - CONTRIBUTORS.md
+            - LICENSE
+            - MANIFEST.in
+            - build_metadata.py
+            - build_support.py
+            - setup.py
         source_files: []
         children:
-            - agents
-            - api
             - assets_and_docs
-            - book_engine
-            - capabilities
-            - cli
-            - co_writer
-            - deeptutor_core
-            - knowledge
-            - learning
-            - multi_user
-            - partners
-            - runtime
+            - backend
+            - cli_tool
+            - github_ci
             - scripts_and_packaging
-            - services
+            - shared_packages
             - tests
-            - tools
-            - utils
             - web_frontend
         depends_on: []
         related_to: []
-    agents:
-        dir_name: DeepTutor 智能体能力聚合层
-        title: DeepTutor 智能体能力聚合层
+    assets_and_docs:
+        dir_name: 项目资源与文档资产
+        title: 项目资源与文档资产
+        scope:
+            - assets/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend:
+        dir_name: DeepTutor 后端平台（能力编排与运行时）
+        title: DeepTutor 后端平台（能力编排与运行时）
+        scope:
+            - deeptutor/
+        source_files: []
+        children:
+            - backend/agents
+            - backend/api
+            - backend/book
+            - backend/capabilities
+            - backend/co_writer
+            - backend/config
+            - backend/core
+            - backend/i18n
+            - backend/knowledge
+            - backend/learning
+            - backend/logging
+            - backend/multi_user
+            - backend/partners
+            - backend/runtime
+            - backend/services
+            - backend/skills_builtin
+            - backend/tools
+            - backend/utils
+        depends_on: []
+        related_to: []
+    backend/agents:
+        dir_name: DeepTutor Agent 能力聚合层
+        title: DeepTutor Agent 能力聚合层
         scope:
             - deeptutor/agents/
         source_files: []
         children:
-            - agents/chat
-            - agents/math_animator
-            - agents/notebook
-            - agents/question
-            - agents/research
-            - agents/shared_base
-            - agents/vision_solver
-            - agents/visualize
+            - backend/agents/chat
+            - backend/agents/math_animator
+            - backend/agents/notebook
+            - backend/agents/question
+            - backend/agents/research
+            - backend/agents/shared_core
+            - backend/agents/vision_solver
+            - backend/agents/visualize
         depends_on: []
         related_to: []
-    agents/chat:
-        dir_name: 聊天智能体与对话会话管理
-        title: 聊天智能体与对话会话管理
+    backend/agents/chat:
+        dir_name: 聊天智能体能力与提示词包
+        title: 聊天智能体能力与提示词包
         scope:
             - deeptutor/agents/chat/
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: capabilities/solve
-    agents/math_animator:
-        dir_name: 数学动画生成能力（Manim 渲染管线）
-        title: 数学动画生成能力（Manim 渲染管线）
+        related_to: []
+    backend/agents/math_animator:
+        dir_name: 数学动画生成器（Manim 渲染管线）
+        title: 数学动画生成器（Manim 渲染管线）
         scope:
             - deeptutor/agents/math_animator/
         source_files: []
         children: []
         depends_on: []
         related_to: []
-    agents/notebook:
-        dir_name: Notebook 分析 & 摘要 Agent
-        title: Notebook 分析 & 摘要 Agent
+    backend/agents/notebook:
+        dir_name: Notebook 记录分析与会话摘要 Agent
+        title: Notebook 记录分析与会话摘要 Agent
         scope:
             - deeptutor/agents/notebook/
         source_files: []
         children: []
         depends_on: []
         related_to: []
-    agents/question:
-        dir_name: 深度提问生成能力（Deep Question Capability）
-        title: 深度提问生成能力（Deep Question Capability）
+    backend/agents/question:
+        dir_name: 深度题目生成能力（Deep Question Capability）
+        title: 深度题目生成能力（Deep Question Capability）
         scope:
             - deeptutor/agents/question/
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: capabilities/shared_infrastructure
-    agents/research:
-        dir_name: Deep Research Agentic Pipeline
-        title: Deep Research Agentic Pipeline
+        related_to: []
+    backend/agents/research:
+        dir_name: Deep Research 能力（多阶段 Agentic 研究管线）
+        title: Deep Research 能力（多阶段 Agentic 研究管线）
         scope:
             - deeptutor/agents/research/
         source_files: []
         children: []
         depends_on: []
         related_to: []
-    agents/shared_base:
+    backend/agents/shared_core:
         dir_name: Agent 基类与跨能力共享工具
         title: Agent 基类与跨能力共享工具
         scope:
@@ -132,229 +161,912 @@ modules:
         children: []
         depends_on: []
         related_to: []
-    agents/vision_solver:
-        dir_name: 几何题图→GeoGebra 视觉求解代理
-        title: 几何题图→GeoGebra 视觉求解代理
+    backend/agents/vision_solver:
+        dir_name: 几何题图 → GeoGebra 命令生成 Agent
+        title: 几何题图 → GeoGebra 命令生成 Agent
         scope:
             - deeptutor/agents/vision_solver/
         source_files: []
         children: []
         depends_on: []
         related_to: []
-    agents/visualize:
-        dir_name: 可视化生成能力（Visualize Capability）
-        title: 可视化生成能力（Visualize Capability）
+    backend/agents/visualize:
+        dir_name: 可视化能力与多阶段生成管线
+        title: 可视化能力与多阶段生成管线
         scope:
             - deeptutor/agents/visualize/
         source_files: []
         children: []
         depends_on: []
         related_to: []
-    api:
-        dir_name: DeepTutor FastAPI 后端服务入口与路由层
-        title: DeepTutor FastAPI 后端服务入口与路由层
+    backend/api:
+        dir_name: DeepTutor FastAPI 服务入口与路由装配层
+        title: DeepTutor FastAPI 服务入口与路由装配层
         scope:
             - deeptutor/api/
         source_files: []
-        children: []
+        children:
+            - backend/api/api_runtime
+            - backend/api/chat_and_sessions
+            - backend/api/co_writer_and_subagents
+            - backend/api/content_learning
+            - backend/api/dashboard_and_voice
+            - backend/api/notebook_and_outputs
+            - backend/api/partners_integrations
+            - backend/api/settings_and_config
         depends_on: []
-        related_to:
-            - path: services/cron
-            - path: services/imagegen
-            - path: services/mcp
-            - path: services/partners
-            - path: services/rag
-            - path: services/session
-            - path: services/voice
-            - path: web_frontend
-            - path: web_frontend/app_routes/workspace_routes/playground_home_layout
-            - path: web_frontend/components/knowledge_base
-            - path: web_frontend/components/mcp
-            - path: web_frontend/components/partners
-            - path: web_frontend/multi_user_feature
-    assets_and_docs:
-        dir_name: 文档资源与 GitHub 工程化配置
-        title: 文档资源与 GitHub 工程化配置
+        related_to: []
+    backend/api/api_runtime:
+        dir_name: FastAPI 应用启动与运行时工具集
+        title: FastAPI 应用启动与运行时工具集
         scope:
-            - assets/
-            - .github/
+            - deeptutor/api/main.py
+            - deeptutor/api/run_server.py
+            - deeptutor/api/utils/
         source_files: []
         children: []
         depends_on: []
         related_to: []
-    book_engine:
-        dir_name: Book Engine（交互式书籍生成引擎）
-        title: Book Engine（交互式书籍生成引擎）
+    backend/api/chat_and_sessions:
+        dir_name: 会话与聊天 WebSocket API
+        title: 会话与聊天 WebSocket API
+        scope:
+            - deeptutor/api/routers/chat.py
+            - deeptutor/api/routers/sessions.py
+            - deeptutor/api/routers/unified_ws.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/api/co_writer_and_subagents:
+        dir_name: 协作者、子代理与工具目录 API
+        title: 协作者、子代理与工具目录 API
+        scope:
+            - deeptutor/api/routers/co_writer.py
+            - deeptutor/api/routers/subagents.py
+            - deeptutor/api/routers/tools.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/api/content_learning:
+        dir_name: 学习内容 API 路由（Book _ Knowledge _ Question _ Mastery Path _ Skills _ Personas）
+        title: 学习内容 API 路由（Book / Knowledge / Question / Mastery Path / Skills / Personas）
+        scope:
+            - deeptutor/api/routers/book.py
+            - deeptutor/api/routers/knowledge.py
+            - deeptutor/api/routers/question.py
+            - deeptutor/api/routers/question_notebook.py
+            - deeptutor/api/routers/mastery_path.py
+            - deeptutor/api/routers/skills.py
+            - deeptutor/api/routers/personas.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/api/dashboard_and_voice:
+        dir_name: 仪表盘、语音与测验评判接口
+        title: 仪表盘、语音与测验评判接口
+        scope:
+            - deeptutor/api/routers/dashboard.py
+            - deeptutor/api/routers/voice.py
+            - deeptutor/api/routers/quiz_judge.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/api/notebook_and_outputs:
+        dir_name: Notebook、输出与记忆工作区 HTTP 路由
+        title: Notebook、输出与记忆工作区 HTTP 路由
+        scope:
+            - deeptutor/api/routers/notebook.py
+            - deeptutor/api/routers/outputs.py
+            - deeptutor/api/routers/attachments.py
+            - deeptutor/api/routers/memory.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/api/partners_integrations:
+        dir_name: 合作伙伴与渠道集成 API
+        title: 合作伙伴与渠道集成 API
+        scope:
+            - deeptutor/api/routers/partners.py
+            - deeptutor/api/routers/_partners_channel_schema.py
+            - deeptutor/api/routers/plugins_api.py
+            - deeptutor/api/routers/imports.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/api/settings_and_config:
+        dir_name: 设置与配置 API 路由层
+        title: 设置与配置 API 路由层
+        scope:
+            - deeptutor/api/routers/settings.py
+            - deeptutor/api/routers/capabilities_settings.py
+            - deeptutor/api/routers/mcp_settings.py
+            - deeptutor/api/routers/agent_config.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/book:
+        dir_name: DeepTutor Book Engine
+        title: DeepTutor Book Engine
         scope:
             - deeptutor/book/
         source_files: []
+        children:
+            - backend/book/agents_pipeline
+            - backend/book/blocks_catalog
+            - backend/book/book_core
+            - backend/book/compiler_engine
+        depends_on: []
+        related_to: []
+    backend/book/agents_pipeline:
+        dir_name: BookEngine 多阶段 Agent 流水线
+        title: BookEngine 多阶段 Agent 流水线
+        scope:
+            - deeptutor/book/agents/
+        source_files: []
         children: []
         depends_on: []
         related_to: []
-    capabilities:
-        dir_name: DeepTutor 能力插件体系（Capabilities）
-        title: DeepTutor 能力插件体系（Capabilities）
+    backend/book/blocks_catalog:
+        dir_name: Book Block LLM 生成器集合
+        title: Book Block LLM 生成器集合
+        scope:
+            - deeptutor/book/blocks/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/book/book_core:
+        dir_name: Book Engine 核心数据模型与辅助工具
+        title: Book Engine 核心数据模型与辅助工具
+        scope:
+            - deeptutor/book/context.py
+            - deeptutor/book/inputs.py
+            - deeptutor/book/models.py
+            - deeptutor/book/streaming.py
+            - deeptutor/book/kb_health.py
+            - deeptutor/book/__init__.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/book/compiler_engine:
+        dir_name: 书籍编译引擎与持久化层
+        title: 书籍编译引擎与持久化层
+        scope:
+            - deeptutor/book/compiler.py
+            - deeptutor/book/engine.py
+            - deeptutor/book/storage.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/capabilities:
+        dir_name: DeepTutor 聊天循环能力集合
+        title: DeepTutor 聊天循环能力集合
         scope:
             - deeptutor/capabilities/
         source_files: []
         children:
-            - capabilities/explore_context
-            - capabilities/mastery
-            - capabilities/obsidian
-            - capabilities/shared_infrastructure
-            - capabilities/solve
-            - capabilities/subagent
+            - backend/capabilities/capability_framework
+            - backend/capabilities/explore_context
+            - backend/capabilities/mastery
+            - backend/capabilities/obsidian
+            - backend/capabilities/solve
+            - backend/capabilities/subagent
         depends_on: []
         related_to: []
-    capabilities/explore_context:
-        dir_name: 上下文探索前置能力（Explore Context Pre-pass）
-        title: 上下文探索前置能力（Explore Context Pre-pass）
+    backend/capabilities/capability_framework:
+        dir_name: 聊天循环能力协议与注册中心
+        title: 聊天循环能力协议与注册中心
+        scope:
+            - deeptutor/capabilities/protocol.py
+            - deeptutor/capabilities/registry.py
+            - deeptutor/capabilities/__init__.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/capabilities/explore_context:
+        dir_name: 上下文探索预循环能力（Explore Context Pre-loop）
+        title: 上下文探索预循环能力（Explore Context Pre-loop）
         scope:
             - deeptutor/capabilities/explore_context/
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: capabilities/shared_infrastructure
-    capabilities/mastery:
-        dir_name: 掌握式学习路径能力（Mastery Path Capability）
-        title: 掌握式学习路径能力（Mastery Path Capability）
+        related_to: []
+    backend/capabilities/mastery:
+        dir_name: Mastery Path Tutoring Capability
+        title: Mastery Path Tutoring Capability
         scope:
             - deeptutor/capabilities/mastery/
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: capabilities/shared_infrastructure
-            - path: learning
-    capabilities/obsidian:
-        dir_name: Obsidian Vault Capability
-        title: Obsidian Vault Capability
+        related_to: []
+    backend/capabilities/obsidian:
+        dir_name: Obsidian Vault 能力（知识检索与创作）
+        title: Obsidian Vault 能力（知识检索与创作）
         scope:
             - deeptutor/capabilities/obsidian/
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: capabilities/shared_infrastructure
-    capabilities/shared_infrastructure:
-        dir_name: 能力协议与注册中心（Capabilities Protocol & Registry）
-        title: 能力协议与注册中心（Capabilities Protocol & Registry）
-        scope:
-            - deeptutor/capabilities/__init__.py
-            - deeptutor/capabilities/protocol.py
-            - deeptutor/capabilities/registry.py
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: agents/question
-            - path: capabilities/explore_context
-            - path: capabilities/mastery
-            - path: capabilities/obsidian
-            - path: capabilities/solve
-            - path: capabilities/subagent
-    capabilities/solve:
-        dir_name: Deep Solve 多步问题求解能力
-        title: Deep Solve 多步问题求解能力
+        related_to: []
+    backend/capabilities/solve:
+        dir_name: Deep Solve 解题能力
+        title: Deep Solve 解题能力
         scope:
             - deeptutor/capabilities/solve/
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: agents/chat
-            - path: capabilities/shared_infrastructure
-    capabilities/subagent:
-        dir_name: Subagent 能力（本地_伙伴智能体委托）
-        title: Subagent 能力（本地/伙伴智能体委托）
+        related_to: []
+    backend/capabilities/subagent:
+        dir_name: Subagent 委托能力（本地_伙伴智能体委派）
+        title: Subagent 委托能力（本地/伙伴智能体委派）
         scope:
             - deeptutor/capabilities/subagent/
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: capabilities/shared_infrastructure
-    cli:
-        dir_name: DeepTutor CLI 命令行入口与 REPL
-        title: DeepTutor CLI 命令行入口与 REPL
-        scope:
-            - deeptutor_cli/
-        source_files: []
-        children: []
-        depends_on: []
         related_to: []
-    co_writer:
-        dir_name: Co-Writer 协作写作 Agent
-        title: Co-Writer 协作写作 Agent
+    backend/co_writer:
+        dir_name: Co-Writer 协同编辑 Agent 与文档存储
+        title: Co-Writer 协同编辑 Agent 与文档存储
         scope:
             - deeptutor/co_writer/
         source_files: []
         children: []
         depends_on: []
         related_to: []
-    deeptutor_core:
-        dir_name: DeepTutor 核心协议、配置与基础设施层
-        title: DeepTutor 核心协议、配置与基础设施层
+    backend/config:
+        dir_name: DeepTutor 配置中心
+        title: DeepTutor 配置中心
+        scope:
+            - deeptutor/config/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/core:
+        dir_name: 核心协议与运行时上下文
+        title: 核心协议与运行时上下文
         scope:
             - deeptutor/core/
-            - deeptutor/config/
-            - deeptutor/logging/
-            - deeptutor/events/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/i18n:
+        dir_name: DeepTutor 国际化（i18n）资源与工具
+        title: DeepTutor 国际化（i18n）资源与工具
+        scope:
             - deeptutor/i18n/
         source_files: []
         children: []
         depends_on: []
         related_to: []
-    knowledge:
-        dir_name: 知识库管理（Knowledge Base Management）
-        title: 知识库管理（Knowledge Base Management）
+    backend/knowledge:
+        dir_name: 知识库（Knowledge Base）生命周期与索引编排
+        title: 知识库（Knowledge Base）生命周期与索引编排
         scope:
             - deeptutor/knowledge/
         source_files: []
         children: []
         depends_on: []
         related_to: []
-    learning:
-        dir_name: 掌握路径教学引擎（Learning）
-        title: 掌握路径教学引擎（Learning）
+    backend/learning:
+        dir_name: Mastery Path 学习引擎
+        title: Mastery Path 学习引擎
         scope:
             - deeptutor/learning/
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: capabilities/mastery
-    multi_user:
-        dir_name: 多用户权限与资源授权子系统
-        title: 多用户权限与资源授权子系统
+        related_to: []
+    backend/logging:
+        dir_name: DeepTutor 统一日志与 LLM 用量统计
+        title: DeepTutor 统一日志与 LLM 用量统计
+        scope:
+            - deeptutor/logging/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/multi_user:
+        dir_name: 多用户权限与资源隔离层
+        title: 多用户权限与资源隔离层
         scope:
             - deeptutor/multi_user/
         source_files: []
         children: []
         depends_on: []
         related_to: []
-    partners:
-        dir_name: IM 渠道与消息总线（Partners）
-        title: IM 渠道与消息总线（Partners）
+    backend/partners:
+        dir_name: DeepTutor Partners 聊天伙伴子系统
+        title: DeepTutor Partners 聊天伙伴子系统
         scope:
             - deeptutor/partners/
+        source_files: []
+        children:
+            - backend/partners/bus
+            - backend/partners/channels
+            - backend/partners/config
+        depends_on: []
+        related_to: []
+    backend/partners/bus:
+        dir_name: 聊天渠道与 Agent 解耦的消息总线
+        title: 聊天渠道与 Agent 解耦的消息总线
+        scope:
+            - deeptutor/partners/bus/
         source_files: []
         children: []
         depends_on: []
         related_to: []
-    runtime:
-        dir_name: DeepTutor 运行时编排与进程管理
-        title: DeepTutor 运行时编排与进程管理
+    backend/partners/channels:
+        dir_name: 聊天渠道适配层（Chat Channels）
+        title: 聊天渠道适配层（Chat Channels）
+        scope:
+            - deeptutor/partners/channels/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/partners/config:
+        dir_name: Partners 渠道配置与路径解析
+        title: Partners 渠道配置与路径解析
+        scope:
+            - deeptutor/partners/config/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/runtime:
+        dir_name: DeepTutor 运行时编排层
+        title: DeepTutor 运行时编排层
         scope:
             - deeptutor/runtime/
+        source_files: []
+        children:
+            - backend/runtime/providers
+            - backend/runtime/registry
+        depends_on: []
+        related_to: []
+    backend/runtime/providers:
+        dir_name: 外部工具提供者授权与视图装配
+        title: 外部工具提供者授权与视图装配
+        scope:
+            - deeptutor/runtime/providers/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/runtime/registry:
+        dir_name: 运行时能力与工具注册中心
+        title: 运行时能力与工具注册中心
+        scope:
+            - deeptutor/runtime/registry/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services:
+        dir_name: DeepTutor 服务层（Services Layer）
+        title: DeepTutor 服务层（Services Layer）
+        scope:
+            - deeptutor/services/
+        source_files: []
+        children:
+            - backend/services/cli_apps
+            - backend/services/codex_auth
+            - backend/services/config
+            - backend/services/cron
+            - backend/services/embedding
+            - backend/services/imagegen
+            - backend/services/llm
+            - backend/services/mcp
+            - backend/services/memory
+            - backend/services/model_selection
+            - backend/services/parsing
+            - backend/services/partners
+            - backend/services/persona
+            - backend/services/prompt
+            - backend/services/rag
+            - backend/services/root_services
+            - backend/services/sandbox
+            - backend/services/search
+            - backend/services/session
+            - backend/services/skill
+            - backend/services/subagent
+            - backend/services/videogen
+            - backend/services/voice
+        depends_on: []
+        related_to: []
+    backend/services/cli_apps:
+        dir_name: CLI 应用目录、安装与沙箱执行服务
+        title: CLI 应用目录、安装与沙箱执行服务
+        scope:
+            - deeptutor/services/cli_apps/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/codex_auth:
+        dir_name: OpenAI Codex OAuth 认证与模型目录集成
+        title: OpenAI Codex OAuth 认证与模型目录集成
+        scope:
+            - deeptutor/services/codex_auth/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/config:
+        dir_name: 运行时配置与设置元模型
+        title: 运行时配置与设置元模型
+        scope:
+            - deeptutor/services/config/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/cron:
+        dir_name: 内置定时任务服务（Cron）
+        title: 内置定时任务服务（Cron）
+        scope:
+            - deeptutor/services/cron/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/embedding:
+        dir_name: 统一 Embedding 客户端与多后端适配器
+        title: 统一 Embedding 客户端与多后端适配器
+        scope:
+            - deeptutor/services/embedding/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/imagegen:
+        dir_name: 文本生成图像服务适配器层
+        title: 文本生成图像服务适配器层
+        scope:
+            - deeptutor/services/imagegen/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/llm:
+        dir_name: DeepTutor LLM 统一服务层
+        title: DeepTutor LLM 统一服务层
+        scope:
+            - deeptutor/services/llm/
+        source_files: []
+        children:
+            - backend/services/llm/capabilities
+            - backend/services/llm/orchestration
+            - backend/services/llm/provider_core
+            - backend/services/llm/transport
+        depends_on: []
+        related_to: []
+    backend/services/llm/capabilities:
+        dir_name: LLM Provider 能力与多模态_推理参数适配层
+        title: LLM Provider 能力与多模态/推理参数适配层
+        scope:
+            - deeptutor/services/llm/capabilities.py
+            - deeptutor/services/llm/multimodal.py
+            - deeptutor/services/llm/reasoning_params.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/llm/orchestration:
+        dir_name: LLM 服务编排与统一客户端
+        title: LLM 服务编排与统一客户端
+        scope:
+            - deeptutor/services/llm/client.py
+            - deeptutor/services/llm/factory.py
+            - deeptutor/services/llm/registry.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/llm/provider_core:
+        dir_name: LLM Provider 抽象层与多厂商实现
+        title: LLM Provider 抽象层与多厂商实现
+        scope:
+            - deeptutor/services/llm/provider_core/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/llm/transport:
+        dir_name: LLM 传输层：HTTP 客户端与模型发现
+        title: LLM 传输层：HTTP 客户端与模型发现
+        scope:
+            - deeptutor/services/llm/openai_http_client.py
+            - deeptutor/services/llm/cloud_provider.py
+            - deeptutor/services/llm/local_provider.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/mcp:
+        dir_name: MCP 工具集成与连接管理
+        title: MCP 工具集成与连接管理
+        scope:
+            - deeptutor/services/mcp/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/memory:
+        dir_name: DeepTutor 三层记忆子系统
+        title: DeepTutor 三层记忆子系统
+        scope:
+            - deeptutor/services/memory/
+        source_files: []
+        children:
+            - backend/services/memory/consolidator
+            - backend/services/memory/core_layer
+            - backend/services/memory/snapshot_store
+        depends_on: []
+        related_to: []
+    backend/services/memory/consolidator:
+        dir_name: 记忆文档 Consolidator（增量更新_审计_去重_合并）
+        title: 记忆文档 Consolidator（增量更新/审计/去重/合并）
+        scope:
+            - deeptutor/services/memory/consolidator/
+            - deeptutor/services/memory/prompts/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/memory/core_layer:
+        dir_name: 三层记忆子系统（L1_L2_L3）
+        title: 三层记忆子系统（L1/L2/L3）
+        scope:
+            - deeptutor/services/memory/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/memory/snapshot_store:
+        dir_name: L1 工作区快照与变更日志子系统
+        title: L1 工作区快照与变更日志子系统
+        scope:
+            - deeptutor/services/memory/snapshot/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/model_selection:
+        dir_name: LLM 模型选择与任务模型运行时
+        title: LLM 模型选择与任务模型运行时
+        scope:
+            - deeptutor/services/model_selection/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/parsing:
+        dir_name: DeepTutor 文档解析服务（多引擎桥接层）
+        title: DeepTutor 文档解析服务（多引擎桥接层）
+        scope:
+            - deeptutor/services/parsing/
+        source_files: []
+        children:
+            - backend/services/parsing/engine_registry
+            - backend/services/parsing/mineru_engine
+            - backend/services/parsing/parsing_core
+            - backend/services/parsing/pdf_engines
+            - backend/services/parsing/tika_engine
+        depends_on: []
+        related_to: []
+    backend/services/parsing/engine_registry:
+        dir_name: 文档解析引擎注册表与安装管理
+        title: 文档解析引擎注册表与安装管理
+        scope:
+            - deeptutor/services/parsing/engines/factory.py
+            - deeptutor/services/parsing/engines/formats.py
+            - deeptutor/services/parsing/engines/_install.py
+            - deeptutor/services/parsing/engines/_versions.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/parsing/mineru_engine:
+        dir_name: MinerU 解析引擎（本地 CLI _ 云端 API）
+        title: MinerU 解析引擎（本地 CLI / 云端 API）
+        scope:
+            - deeptutor/services/parsing/engines/mineru/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/parsing/parsing_core:
+        dir_name: 文档解析核心层（引擎协议、缓存与 IR）
+        title: 文档解析核心层（引擎协议、缓存与 IR）
+        scope:
+            - deeptutor/services/parsing/base.py
+            - deeptutor/services/parsing/service.py
+            - deeptutor/services/parsing/cache.py
+            - deeptutor/services/parsing/types.py
+            - deeptutor/services/parsing/signature.py
+            - deeptutor/services/parsing/progress.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/parsing/pdf_engines:
+        dir_name: 文档解析引擎适配层（Docling _ LiteParse _ MarkItDown _ PyMuPDF4LLM）
+        title: 文档解析引擎适配层（Docling / LiteParse / MarkItDown / PyMuPDF4LLM）
+        scope:
+            - deeptutor/services/parsing/engines/docling/
+            - deeptutor/services/parsing/engines/liteparse/
+            - deeptutor/services/parsing/engines/markitdown/
+            - deeptutor/services/parsing/engines/pymupdf4llm/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/parsing/tika_engine:
+        dir_name: Apache Tika 远程解析引擎
+        title: Apache Tika 远程解析引擎
+        scope:
+            - deeptutor/services/parsing/engines/tika/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/partners:
+        dir_name: Partner 运行时与多通道服务
+        title: Partner 运行时与多通道服务
+        scope:
+            - deeptutor/services/partners/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/persona:
+        dir_name: Persona 行为_语气预设服务
+        title: Persona 行为/语气预设服务
+        scope:
+            - deeptutor/services/persona/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/prompt:
+        dir_name: Prompt 模板统一加载与语言指令服务
+        title: Prompt 模板统一加载与语言指令服务
+        scope:
+            - deeptutor/services/prompt/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/rag:
+        dir_name: DeepTutor RAG 多引擎服务层
+        title: DeepTutor RAG 多引擎服务层
+        scope:
+            - deeptutor/services/rag/
+        source_files: []
+        children:
+            - backend/services/rag/eval
+            - backend/services/rag/pipeline_adapters
+            - backend/services/rag/pipeline_graphrag
+            - backend/services/rag/pipeline_ima
+            - backend/services/rag/pipeline_lightrag
+            - backend/services/rag/pipeline_llamaindex
+            - backend/services/rag/pipeline_pageindex
+            - backend/services/rag/shared_orchestration
+        depends_on: []
+        related_to: []
+    backend/services/rag/eval:
+        dir_name: RAG 检索质量评估与回归对比
+        title: RAG 检索质量评估与回归对比
+        scope:
+            - deeptutor/services/rag/eval/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/rag/pipeline_adapters:
+        dir_name: 外部 RAG 后端适配器（Kiwix _ LightRAG Server _ WeKnora）
+        title: 外部 RAG 后端适配器（Kiwix / LightRAG Server / WeKnora）
+        scope:
+            - deeptutor/services/rag/pipelines/kiwix/
+            - deeptutor/services/rag/pipelines/lightrag_server/
+            - deeptutor/services/rag/pipelines/weknora/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/rag/pipeline_graphrag:
+        dir_name: GraphRAG 知识图谱 RAG 管道
+        title: GraphRAG 知识图谱 RAG 管道
+        scope:
+            - deeptutor/services/rag/pipelines/graphrag/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/rag/pipeline_ima:
+        dir_name: Tencent IMA 知识库检索管道
+        title: Tencent IMA 知识库检索管道
+        scope:
+            - deeptutor/services/rag/pipelines/ima/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/rag/pipeline_lightrag:
+        dir_name: LightRAG 原生知识图谱 RAG 管道
+        title: LightRAG 原生知识图谱 RAG 管道
+        scope:
+            - deeptutor/services/rag/pipelines/lightrag/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/rag/pipeline_llamaindex:
+        dir_name: LlamaIndex RAG 检索增强生成管道
+        title: LlamaIndex RAG 检索增强生成管道
+        scope:
+            - deeptutor/services/rag/pipelines/llamaindex/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/rag/pipeline_pageindex:
+        dir_name: PageIndex RAG Pipeline（Cloud_OSS 双后端）
+        title: PageIndex RAG Pipeline（Cloud/OSS 双后端）
+        scope:
+            - deeptutor/services/rag/pipelines/pageindex/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/rag/shared_orchestration:
+        dir_name: RAG 服务与多引擎编排层
+        title: RAG 服务与多引擎编排层
+        scope:
+            - deeptutor/services/rag/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/root_services:
+        dir_name: 认证与 CodeBuddy 集成服务
+        title: 认证与 CodeBuddy 集成服务
+        scope:
+            - deeptutor/services/auth.py
+            - deeptutor/services/codebuddy_auth.py
+            - deeptutor/services/codebuddy_credentials.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/sandbox:
+        dir_name: 沙箱化命令执行服务
+        title: 沙箱化命令执行服务
+        scope:
+            - deeptutor/services/sandbox/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/search:
+        dir_name: Web Search Provider 抽象与结果过滤
+        title: Web Search Provider 抽象与结果过滤
+        scope:
+            - deeptutor/services/search/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/session:
+        dir_name: 会话与回合运行时服务
+        title: 会话与回合运行时服务
+        scope:
+            - deeptutor/services/session/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/skill:
+        dir_name: Skill 能力包服务与外部 Hub 分发
+        title: Skill 能力包服务与外部 Hub 分发
+        scope:
+            - deeptutor/services/skill/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/subagent:
+        dir_name: 子代理驱动层（Subagent Driver Layer）
+        title: 子代理驱动层（Subagent Driver Layer）
+        scope:
+            - deeptutor/services/subagent/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/videogen:
+        dir_name: 文本转视频生成适配器层
+        title: 文本转视频生成适配器层
+        scope:
+            - deeptutor/services/videogen/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/services/voice:
+        dir_name: 语音服务（TTS_STT 适配器与编排）
+        title: 语音服务（TTS/STT 适配器与编排）
+        scope:
+            - deeptutor/services/voice/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/skills_builtin:
+        dir_name: 内置技能文档集（Office 与 Skill 作者指南）
+        title: 内置技能文档集（Office 与 Skill 作者指南）
+        scope:
+            - deeptutor/skills/builtin/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/tools:
+        dir_name: DeepTutor Agent 工具层（Built-in Tools & Prompt Hints）
+        title: DeepTutor Agent 工具层（Built-in Tools & Prompt Hints）
+        scope:
+            - deeptutor/tools/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/utils:
+        dir_name: DeepTutor 通用工具库
+        title: DeepTutor 通用工具库
+        scope:
+            - deeptutor/utils/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    cli_tool:
+        dir_name: DeepTutor CLI 命令行入口与命令组
+        title: DeepTutor CLI 命令行入口与命令组
+        scope:
+            - deeptutor_cli/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    github_ci:
+        dir_name: GitHub Actions CI_CD 与贡献模板
+        title: GitHub Actions CI/CD 与贡献模板
+        scope:
+            - .github/
         source_files: []
         children: []
         depends_on: []
         related_to: []
     scripts_and_packaging:
-        dir_name: 开发脚本、打包配置与依赖清单
-        title: 开发脚本、打包配置与依赖清单
+        dir_name: 构建脚本与打包元数据
+        title: 构建脚本与打包元数据
         scope:
             - scripts/
             - packaging/
@@ -363,595 +1075,39 @@ modules:
         children: []
         depends_on: []
         related_to: []
-    services:
-        dir_name: DeepTutor 服务层（Services）
-        title: DeepTutor 服务层（Services）
+    shared_packages:
+        dir_name: 共享包与桌面客户端（chat-engine、deeptutor_web、apps_desktop）
+        title: 共享包与桌面客户端（chat-engine、deeptutor_web、apps/desktop）
         scope:
-            - deeptutor/services/
-        source_files: []
-        children:
-            - services/cli_apps
-            - services/codex_auth
-            - services/config
-            - services/cron
-            - services/embedding
-            - services/imagegen
-            - services/llm
-            - services/mcp
-            - services/memory
-            - services/model_selection
-            - services/parsing
-            - services/partners
-            - services/persona
-            - services/prompt
-            - services/rag
-            - services/root_services
-            - services/sandbox
-            - services/search
-            - services/session
-            - services/skill
-            - services/subagent
-            - services/videogen
-            - services/voice
-        depends_on: []
-        related_to: []
-    services/cli_apps:
-        dir_name: CLI 应用目录与沙箱执行服务
-        title: CLI 应用目录与沙箱执行服务
-        scope:
-            - deeptutor/services/cli_apps/
+            - packages/
+            - deeptutor_web/
+            - apps/desktop/
         source_files: []
         children: []
         depends_on: []
         related_to: []
-    services/codex_auth:
-        dir_name: OpenAI Codex OAuth 认证与模型目录服务
-        title: OpenAI Codex OAuth 认证与模型目录服务
-        scope:
-            - deeptutor/services/codex_auth/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    services/config:
-        dir_name: 运行时配置与模型目录服务
-        title: 运行时配置与模型目录服务
-        scope:
-            - deeptutor/services/config/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    services/cron:
-        dir_name: 内置定时任务服务（Cron）
-        title: 内置定时任务服务（Cron）
-        scope:
-            - deeptutor/services/cron/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: api
-    services/embedding:
-        dir_name: 统一嵌入向量服务（Embedding Client & Adapters）
-        title: 统一嵌入向量服务（Embedding Client & Adapters）
-        scope:
-            - deeptutor/services/embedding/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    services/imagegen:
-        dir_name: 文本转图像生成服务（ImageGen）
-        title: 文本转图像生成服务（ImageGen）
-        scope:
-            - deeptutor/services/imagegen/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: api
-    services/llm:
-        dir_name: DeepTutor LLM 服务统一入口
-        title: DeepTutor LLM 服务统一入口
-        scope:
-            - deeptutor/services/llm/
-        source_files: []
-        children:
-            - services/llm/core_runtime
-            - services/llm/provider_core
-            - services/llm/providers
-        depends_on: []
-        related_to: []
-    services/llm/core_runtime:
-        dir_name: LLM 服务核心运行时
-        title: LLM 服务核心运行时
-        scope:
-            - deeptutor/services/llm/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/llm/provider_core
-            - path: services/llm/providers
-    services/llm/provider_core:
-        dir_name: LLM Provider 抽象层与多厂商适配
-        title: LLM Provider 抽象层与多厂商适配
-        scope:
-            - deeptutor/services/llm/provider_core/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/llm/core_runtime
-            - path: services/llm/providers
-    services/llm/providers:
-        dir_name: LLM 提供商抽象与实现
-        title: LLM 提供商抽象与实现
-        scope:
-            - deeptutor/services/llm/providers/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/llm/core_runtime
-            - path: services/llm/provider_core
-    services/mcp:
-        dir_name: DeepTutor MCP 服务集成层
-        title: DeepTutor MCP 服务集成层
-        scope:
-            - deeptutor/services/mcp/
-        source_files: []
-        children:
-            - services/mcp/catalog
-            - services/mcp/network_auth_secrets
-            - services/mcp/server_runtime
-            - services/mcp/session_user_config
-        depends_on: []
-        related_to:
-            - path: api
-    services/mcp/catalog:
-        dir_name: MCP 服务目录（Catalog）
-        title: MCP 服务目录（Catalog）
-        scope:
-            - deeptutor/services/mcp/catalog/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/mcp/server_runtime
-    services/mcp/network_auth_secrets:
-        dir_name: MCP 服务器网络防护、OAuth 认证与密钥管理
-        title: MCP 服务器网络防护、OAuth 认证与密钥管理
-        scope:
-            - deeptutor/services/mcp/network.py
-            - deeptutor/services/mcp/oauth.py
-            - deeptutor/services/mcp/secrets.py
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/mcp/server_runtime
-    services/mcp/server_runtime:
-        dir_name: MCP 服务器连接管理与内置 PageIndex 注入
-        title: MCP 服务器连接管理与内置 PageIndex 注入
-        scope:
-            - deeptutor/services/mcp/pageindex_server.py
-            - deeptutor/services/mcp/manager.py
-            - deeptutor/services/mcp/config.py
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/mcp/catalog
-            - path: services/mcp/network_auth_secrets
-            - path: services/mcp/session_user_config
-    services/mcp/session_user_config:
-        dir_name: MCP 会话状态与用户配置持久化
-        title: MCP 会话状态与用户配置持久化
-        scope:
-            - deeptutor/services/mcp/session_state.py
-            - deeptutor/services/mcp/user_config.py
-            - deeptutor/services/mcp/__init__.py
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/mcp/server_runtime
-    services/memory:
-        dir_name: 三层记忆服务（Memory Store）
-        title: 三层记忆服务（Memory Store）
-        scope:
-            - deeptutor/services/memory/
-        source_files: []
-        children:
-            - services/memory/consolidator
-            - services/memory/core_store
-            - services/memory/snapshot
-        depends_on: []
-        related_to: []
-    services/memory/consolidator:
-        dir_name: 记忆整合器（Consolidator）
-        title: 记忆整合器（Consolidator）
-        scope:
-            - deeptutor/services/memory/consolidator/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/memory/core_store
-    services/memory/core_store:
-        dir_name: 三层记忆存储子系统（L1_L2_L3 Memory Store）
-        title: 三层记忆存储子系统（L1/L2/L3 Memory Store）
-        scope:
-            - deeptutor/services/memory/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/memory/consolidator
-            - path: services/memory/snapshot
-    services/memory/snapshot:
-        dir_name: L1 记忆快照与变更日志
-        title: L1 记忆快照与变更日志
-        scope:
-            - deeptutor/services/memory/snapshot/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/memory/core_store
-    services/model_selection:
-        dir_name: LLM 模型选择与运行时切换服务
-        title: LLM 模型选择与运行时切换服务
-        scope:
-            - deeptutor/services/model_selection/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    services/parsing:
-        dir_name: 文档解析服务（Parsing Service）
-        title: 文档解析服务（Parsing Service）
-        scope:
-            - deeptutor/services/parsing/
-        source_files: []
-        children:
-            - services/parsing/engines
-            - services/parsing/parsing_core
-        depends_on: []
-        related_to: []
-    services/parsing/engines:
-        dir_name: 文档解析引擎注册中心与多后端适配器
-        title: 文档解析引擎注册中心与多后端适配器
-        scope:
-            - deeptutor/services/parsing/engines/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/parsing/parsing_core
-    services/parsing/parsing_core:
-        dir_name: 文档解析核心服务与内容寻址缓存
-        title: 文档解析核心服务与内容寻址缓存
-        scope:
-            - deeptutor/services/parsing/base.py
-            - deeptutor/services/parsing/service.py
-            - deeptutor/services/parsing/cache.py
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/parsing/engines
-    services/partners:
-        dir_name: 合作伙伴（Partner）运行时服务
-        title: 合作伙伴（Partner）运行时服务
-        scope:
-            - deeptutor/services/partners/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: api
-    services/persona:
-        dir_name: Persona 行为_声音预设服务
-        title: Persona 行为/声音预设服务
-        scope:
-            - deeptutor/services/persona/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    services/prompt:
-        dir_name: 统一提示词管理（Prompt Service）
-        title: 统一提示词管理（Prompt Service）
-        scope:
-            - deeptutor/services/prompt/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    services/rag:
-        dir_name: DeepTutor RAG 多引擎服务编排层
-        title: DeepTutor RAG 多引擎服务编排层
-        scope:
-            - deeptutor/services/rag/
-        source_files: []
-        children:
-            - services/rag/graphrag_pipeline
-            - services/rag/ima_pipeline
-            - services/rag/lightrag_pipeline
-            - services/rag/lightrag_server_pipeline
-            - services/rag/llamaindex_pipeline
-            - services/rag/pageindex_pipeline
-            - services/rag/shared_orchestration
-        depends_on: []
-        related_to:
-            - path: api
-    services/rag/graphrag_pipeline:
-        dir_name: GraphRAG 知识图谱 RAG 管道
-        title: GraphRAG 知识图谱 RAG 管道
-        scope:
-            - deeptutor/services/rag/pipelines/graphrag/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/rag/shared_orchestration
-    services/rag/ima_pipeline:
-        dir_name: Tencent IMA 知识库检索管道
-        title: Tencent IMA 知识库检索管道
-        scope:
-            - deeptutor/services/rag/pipelines/ima/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/rag/shared_orchestration
-    services/rag/lightrag_pipeline:
-        dir_name: LightRAG _ RAG-Anything 知识图谱检索管道
-        title: LightRAG / RAG-Anything 知识图谱检索管道
-        scope:
-            - deeptutor/services/rag/pipelines/lightrag/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/rag/shared_orchestration
-    services/rag/lightrag_server_pipeline:
-        dir_name: LightRAG 外部服务器检索管线
-        title: LightRAG 外部服务器检索管线
-        scope:
-            - deeptutor/services/rag/pipelines/lightrag_server/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    services/rag/llamaindex_pipeline:
-        dir_name: LlamaIndex RAG 检索管道
-        title: LlamaIndex RAG 检索管道
-        scope:
-            - deeptutor/services/rag/pipelines/llamaindex/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/rag/shared_orchestration
-    services/rag/pageindex_pipeline:
-        dir_name: PageIndex 云端 RAG 索引与检索管道
-        title: PageIndex 云端 RAG 索引与检索管道
-        scope:
-            - deeptutor/services/rag/pipelines/pageindex/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/rag/shared_orchestration
-    services/rag/shared_orchestration:
-        dir_name: RAG 管道编排与多引擎路由
-        title: RAG 管道编排与多引擎路由
-        scope:
-            - deeptutor/services/rag/
-            - deeptutor/services/rag/pipelines/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/rag/graphrag_pipeline
-            - path: services/rag/ima_pipeline
-            - path: services/rag/lightrag_pipeline
-            - path: services/rag/llamaindex_pipeline
-            - path: services/rag/pageindex_pipeline
-    services/root_services:
-        dir_name: 服务层基础设施（认证、路径、文件IO、Provider注册与PocketBase客户端）
-        title: 服务层基础设施（认证、路径、文件IO、Provider注册与PocketBase客户端）
-        scope:
-            - deeptutor/services/auth.py
-            - deeptutor/services/file_io.py
-            - deeptutor/services/generation_http.py
-            - deeptutor/services/path_service.py
-            - deeptutor/services/pocketbase_client.py
-            - deeptutor/services/provider_registry.py
-            - deeptutor/services/__init__.py
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    services/sandbox:
-        dir_name: 沙箱执行服务与 Runner 侧车
-        title: 沙箱执行服务与 Runner 侧车
-        scope:
-            - deeptutor/services/sandbox/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    services/search:
-        dir_name: Web Search 服务与多搜索引擎提供商
-        title: Web Search 服务与多搜索引擎提供商
-        scope:
-            - deeptutor/services/search/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    services/session:
-        dir_name: 会话管理与回合运行时
-        title: 会话管理与回合运行时
-        scope:
-            - deeptutor/services/session/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: api
-    services/skill:
-        dir_name: 技能包服务与外部 Hub 集成
-        title: 技能包服务与外部 Hub 集成
-        scope:
-            - deeptutor/services/skill/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    services/subagent:
-        dir_name: DeepTutor 子代理服务层
-        title: DeepTutor 子代理服务层
-        scope:
-            - deeptutor/services/subagent/
-        source_files: []
-        children:
-            - services/subagent/claude_agent
-            - services/subagent/other_agents
-            - services/subagent/runtime
-            - services/subagent/shared_core
-        depends_on: []
-        related_to: []
-    services/subagent/claude_agent:
-        dir_name: Claude Code 子代理后端与模型目录同步
-        title: Claude Code 子代理后端与模型目录同步
-        scope:
-            - deeptutor/services/subagent/claude_code.py
-            - deeptutor/services/subagent/claude_models.py
-            - deeptutor/services/subagent/images.py
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/subagent/runtime
-    services/subagent/other_agents:
-        dir_name: 子代理后端实现（Codex _ Gemini _ Kimi _ Partner）
-        title: 子代理后端实现（Codex / Gemini / Kimi / Partner）
-        scope:
-            - deeptutor/services/subagent/codex.py
-            - deeptutor/services/subagent/gemini.py
-            - deeptutor/services/subagent/kimi.py
-            - deeptutor/services/subagent/partner.py
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/subagent/shared_core
-    services/subagent/runtime:
-        dir_name: 子代理运行时（进程流式输出与会话持久化）
-        title: 子代理运行时（进程流式输出与会话持久化）
-        scope:
-            - deeptutor/services/subagent/process.py
-            - deeptutor/services/subagent/sessions.py
-            - deeptutor/services/subagent/types.py
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/subagent/claude_agent
-    services/subagent/shared_core:
-        dir_name: 子代理共享核心（后端抽象、配置与模型选项）
-        title: 子代理共享核心（后端抽象、配置与模型选项）
-        scope:
-            - deeptutor/services/subagent/base.py
-            - deeptutor/services/subagent/config.py
-            - deeptutor/services/subagent/models.py
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: services/subagent/other_agents
-    services/videogen:
-        dir_name: 文本转视频生成适配器框架
-        title: 文本转视频生成适配器框架
-        scope:
-            - deeptutor/services/videogen/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    services/voice:
-        dir_name: 语音服务（TTS_STT 提供商适配器层）
-        title: 语音服务（TTS/STT 提供商适配器层）
-        scope:
-            - deeptutor/services/voice/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: api
     tests:
-        dir_name: DeepTutor 测试套件（pytest 单元与集成测试）
-        title: DeepTutor 测试套件（pytest 单元与集成测试）
+        dir_name: DeepTutor 测试套件
+        title: DeepTutor 测试套件
         scope:
             - tests/
         source_files: []
         children: []
         depends_on: []
         related_to: []
-    tools:
-        dir_name: 工具层与提示词编排（Tools & Prompt Hints）
-        title: 工具层与提示词编排（Tools & Prompt Hints）
-        scope:
-            - deeptutor/tools/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    utils:
-        dir_name: 通用工具库（配置、文档解析、归档提取与错误处理）
-        title: 通用工具库（配置、文档解析、归档提取与错误处理）
-        scope:
-            - deeptutor/utils/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
     web_frontend:
-        dir_name: DeepTutor Web 前端应用（Next.js App Router）
-        title: DeepTutor Web 前端应用（Next.js App Router）
+        dir_name: Web 前端应用（Next.js App Router）
+        title: Web 前端应用（Next.js App Router）
         scope:
             - web/
         source_files: []
         children:
-            - web_frontend/app_routes
-            - web_frontend/build_and_config
-            - web_frontend/components
-            - web_frontend/i18n_and_assets
-            - web_frontend/multi_user_feature
-            - web_frontend/shared_libs
-            - web_frontend/tests
-        depends_on: []
-        related_to:
-            - path: api
-    web_frontend/app_routes:
-        dir_name: Web App 路由分组（Next.js App Router）
-        title: Web App 路由分组（Next.js App Router）
-        scope:
-            - web/app/
-        source_files: []
-        children:
-            - web_frontend/app_routes/auth_routes
-            - web_frontend/app_routes/utility_routes
-            - web_frontend/app_routes/workspace_routes
+            - web_frontend/route_auth
+            - web_frontend/route_utility
+            - web_frontend/route_workspace
         depends_on: []
         related_to: []
-    web_frontend/app_routes/auth_routes:
+    web_frontend/route_auth:
         dir_name: 认证路由（登录_注册）
         title: 认证路由（登录/注册）
         scope:
@@ -960,455 +1116,116 @@ modules:
         children: []
         depends_on: []
         related_to: []
-    web_frontend/app_routes/utility_routes:
-        dir_name: Utility Routes 分组（(utility)）
-        title: Utility Routes 分组（(utility)）
+    web_frontend/route_utility:
+        dir_name: 工具型页面路由组 (utility)
+        title: 工具型页面路由组 (utility)
         scope:
             - web/app/(utility)/
         source_files: []
         children:
-            - web_frontend/app_routes/utility_routes/memory
-            - web_frontend/app_routes/utility_routes/settings
-            - web_frontend/app_routes/utility_routes/simple_utilities
-            - web_frontend/app_routes/utility_routes/space
+            - web_frontend/route_utility/agent_utilities
+            - web_frontend/route_utility/settings
+            - web_frontend/route_utility/workspace_utilities
         depends_on: []
         related_to: []
-    web_frontend/app_routes/utility_routes/memory:
-        dir_name: 记忆系统路由层（Memory Workbench & Resolver）
-        title: 记忆系统路由层（Memory Workbench & Resolver）
+    web_frontend/route_utility/agent_utilities:
+        dir_name: Agent 与 Memory 工具页面路由
+        title: Agent 与 Memory 工具页面路由
         scope:
+            - web/app/(utility)/agents/
+            - web/app/(utility)/knowledge/
             - web/app/(utility)/memory/
         source_files: []
         children: []
         depends_on: []
         related_to: []
-    web_frontend/app_routes/utility_routes/settings:
-        dir_name: 设置中心路由集（Settings Hub）
-        title: 设置中心路由集（Settings Hub）
+    web_frontend/route_utility/settings:
+        dir_name: 学习进度设置页
+        title: 学习进度设置页
         scope:
             - web/app/(utility)/settings/
         source_files: []
-        children:
-            - web_frontend/app_routes/utility_routes/settings/agents
-            - web_frontend/app_routes/utility_routes/settings/chat_memory_search
-            - web_frontend/app_routes/utility_routes/settings/integrations
-            - web_frontend/app_routes/utility_routes/settings/media_processing
-            - web_frontend/app_routes/utility_routes/settings/network_attachments
-            - web_frontend/app_routes/utility_routes/settings/ui_status
-        depends_on: []
-        related_to: []
-    web_frontend/app_routes/utility_routes/settings/agents:
-        dir_name: 子代理设置路由集合
-        title: 子代理设置路由集合
-        scope:
-            - web/app/(utility)/settings/agents/
-        source_files: []
         children: []
         depends_on: []
         related_to: []
-    web_frontend/app_routes/utility_routes/settings/chat_memory_search:
-        dir_name: 设置页：聊天_记忆_搜索配置
-        title: 设置页：聊天/记忆/搜索配置
+    web_frontend/route_utility/workspace_utilities:
+        dir_name: 工作区与用户资料工具页面
+        title: 工作区与用户资料工具页面
         scope:
-            - web/app/(utility)/settings/chat/
-            - web/app/(utility)/settings/memory/
-            - web/app/(utility)/settings/search/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/app_routes/utility_routes/settings/integrations:
-        dir_name: 设置页集成子模块（MCP_工具_能力配置）
-        title: 设置页集成子模块（MCP/工具/能力配置）
-        scope:
-            - web/app/(utility)/settings/mcp/
-            - web/app/(utility)/settings/tools/
-            - web/app/(utility)/settings/capabilities/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/app_routes/utility_routes/settings/media_processing:
-        dir_name: 媒体处理服务设置页面（STT_TTS_图像_视频_文档解析）
-        title: 媒体处理服务设置页面（STT/TTS/图像/视频/文档解析）
-        scope:
-            - web/app/(utility)/settings/stt/
-            - web/app/(utility)/settings/tts/
-            - web/app/(utility)/settings/video/
-            - web/app/(utility)/settings/image/
-            - web/app/(utility)/settings/document-parsing/
-            - web/app/(utility)/settings/mineru/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/app_routes/utility_routes/settings/network_attachments:
-        dir_name: 设置页：网络、附件与嵌入配置
-        title: 设置页：网络、附件与嵌入配置
-        scope:
-            - web/app/(utility)/settings/network/
-            - web/app/(utility)/settings/attachments/
-            - web/app/(utility)/settings/embedding/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/app_routes/utility_routes/settings/ui_status:
-        dir_name: 设置中心路由（外观与状态）
-        title: 设置中心路由（外观与状态）
-        scope:
-            - web/app/(utility)/settings/appearance/
-            - web/app/(utility)/settings/status/
-            - web/app/(utility)/settings/page.tsx
-            - web/app/(utility)/settings/layout.tsx
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/app_routes/utility_routes/simple_utilities:
-        dir_name: 工具型页面路由（Agents _ Knowledge _ Notebook _ Profile）
-        title: 工具型页面路由（Agents / Knowledge / Notebook / Profile）
-        scope:
-            - web/app/(utility)/agents/
-            - web/app/(utility)/knowledge/
             - web/app/(utility)/notebook/
             - web/app/(utility)/profile/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/app_routes/utility_routes/space:
-        dir_name: 空间工具页面路由集
-        title: 空间工具页面路由集
-        scope:
             - web/app/(utility)/space/
         source_files: []
-        children:
-            - web_frontend/app_routes/utility_routes/space/interaction_features
-            - web_frontend/app_routes/utility_routes/space/personas_and_learning
-        depends_on: []
-        related_to: []
-    web_frontend/app_routes/utility_routes/space/interaction_features:
-        dir_name: 空间交互功能页面路由（聊天历史_题库_技能）
-        title: 空间交互功能页面路由（聊天历史/题库/技能）
-        scope:
-            - web/app/(utility)/space/chat-history/
-            - web/app/(utility)/space/questions/
-            - web/app/(utility)/space/skills/
-        source_files: []
         children: []
         depends_on: []
         related_to: []
-    web_frontend/app_routes/utility_routes/space/personas_and_learning:
-        dir_name: 空间子页面路由（Persona、Notebook、精通之路）
-        title: 空间子页面路由（Persona、Notebook、精通之路）
-        scope:
-            - web/app/(utility)/space/personas/
-            - web/app/(utility)/space/notebooks/
-            - web/app/(utility)/space/learning/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/app_routes/workspace_routes:
-        dir_name: Workspace 工作区路由组
-        title: Workspace 工作区路由组
+    web_frontend/route_workspace:
+        dir_name: Workspace 路由集合（Next.js App Router）
+        title: Workspace 路由集合（Next.js App Router）
         scope:
             - web/app/(workspace)/
         source_files: []
         children:
-            - web_frontend/app_routes/workspace_routes/book
-            - web_frontend/app_routes/workspace_routes/co_writer
-            - web_frontend/app_routes/workspace_routes/partners
-            - web_frontend/app_routes/workspace_routes/playground_home_layout
+            - web_frontend/route_workspace/book_editor
+            - web_frontend/route_workspace/co_writer
+            - web_frontend/route_workspace/partners
         depends_on: []
         related_to: []
-    web_frontend/app_routes/workspace_routes/book:
-        dir_name: 书籍创作与阅读工作区
-        title: 书籍创作与阅读工作区
+    web_frontend/route_workspace/book_editor:
+        dir_name: 书籍编辑器模块（Books Route Workspace）
+        title: 书籍编辑器模块（Books Route Workspace）
         scope:
-            - web/app/(workspace)/book/
+            - web/app/(workspace)/learning/books/
+        source_files: []
+        children:
+            - web_frontend/route_workspace/book_editor/block_renderer
+            - web_frontend/route_workspace/book_editor/book_editor_shell
+            - web_frontend/route_workspace/book_editor/book_routes
+        depends_on: []
+        related_to: []
+    web_frontend/route_workspace/book_editor/block_renderer:
+        dir_name: 图书章节块渲染器集合
+        title: 图书章节块渲染器集合
+        scope:
+            - web/app/(workspace)/learning/books/components/blocks/
         source_files: []
         children: []
         depends_on: []
         related_to: []
-    web_frontend/app_routes/workspace_routes/co_writer:
-        dir_name: Co-Writer 协作文档编辑器
-        title: Co-Writer 协作文档编辑器
+    web_frontend/route_workspace/book_editor/book_editor_shell:
+        dir_name: 书籍编辑器路由与页面外壳
+        title: 书籍编辑器路由与页面外壳
+        scope:
+            - web/app/(workspace)/learning/books/components/
+            - web/app/(workspace)/learning/books/page.tsx
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    web_frontend/route_workspace/book_editor/book_routes:
+        dir_name: 书籍编辑器路由与编排层
+        title: 书籍编辑器路由与编排层
+        scope:
+            - web/app/(workspace)/learning/books/[bookId]/
+            - web/app/(workspace)/learning/books/BooksRoute.tsx
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    web_frontend/route_workspace/co_writer:
+        dir_name: Co-Writer 协作文本编辑器路由层
+        title: Co-Writer 协作文本编辑器路由层
         scope:
             - web/app/(workspace)/co-writer/
         source_files: []
         children: []
         depends_on: []
         related_to: []
-    web_frontend/app_routes/workspace_routes/partners:
-        dir_name: 合作伙伴（Partners）工作区路由
-        title: 合作伙伴（Partners）工作区路由
+    web_frontend/route_workspace/partners:
+        dir_name: 合作伙伴与伙伴群组管理界面
+        title: 合作伙伴与伙伴群组管理界面
         scope:
             - web/app/(workspace)/partners/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/app_routes/workspace_routes/playground_home_layout:
-        dir_name: 工作区布局与聊天_Playground 主页路由
-        title: 工作区布局与聊天/Playground 主页路由
-        scope:
-            - web/app/(workspace)/playground/
-            - web/app/(workspace)/home/
-            - web/app/(workspace)/layout.tsx
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: api
-    web_frontend/build_and_config:
-        dir_name: Web 前端构建与开发辅助脚本集
-        title: Web 前端构建与开发辅助脚本集
-        scope:
-            - web/scripts/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/components:
-        dir_name: DeepTutor Web 前端组件集
-        title: DeepTutor Web 前端组件集
-        scope:
-            - web/components/
-        source_files: []
-        children:
-            - web_frontend/components/agents
-            - web_frontend/components/auth_access
-            - web_frontend/components/chat
-            - web_frontend/components/common_ui
-            - web_frontend/components/knowledge_base
-            - web_frontend/components/layout_shell
-            - web_frontend/components/mcp
-            - web_frontend/components/memory
-            - web_frontend/components/notebook
-            - web_frontend/components/partners
-            - web_frontend/components/quiz_research
-            - web_frontend/components/root_shells
-            - web_frontend/components/settings
-            - web_frontend/components/space
-            - web_frontend/components/visualize_math
-        depends_on: []
-        related_to: []
-    web_frontend/components/agents:
-        dir_name: 智能体连接中心（Agents Hub）
-        title: 智能体连接中心（Agents Hub）
-        scope:
-            - web/components/agents/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/components/auth_access:
-        dir_name: 能力权限与认证 UI 组件
-        title: 能力权限与认证 UI 组件
-        scope:
-            - web/components/access/
-            - web/components/auth/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/components/chat:
-        dir_name: 聊天组件集（会话、预览与资源选择）
-        title: 聊天组件集（会话、预览与资源选择）
-        scope:
-            - web/components/chat/
-        source_files: []
-        children:
-            - web_frontend/components/chat/file_previewers
-            - web_frontend/components/chat/home_composer_viewer
-            - web_frontend/components/chat/pickers_and_space
-        depends_on: []
-        related_to: []
-    web_frontend/components/chat/file_previewers:
-        dir_name: 聊天附件文件预览抽屉与渲染器
-        title: 聊天附件文件预览抽屉与渲染器
-        scope:
-            - web/components/chat/preview/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/components/chat/home_composer_viewer:
-        dir_name: 聊天会话主面板与消息编辑器
-        title: 聊天会话主面板与消息编辑器
-        scope:
-            - web/components/chat/home/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/components/chat/pickers_and_space:
-        dir_name: 聊天空间选择器与入口菜单
-        title: 聊天空间选择器与入口菜单
-        scope:
-            - web/components/chat/space/
-            - web/components/chat/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/components/common_ui:
-        dir_name: 通用 UI 与 Markdown 渲染组件库
-        title: 通用 UI 与 Markdown 渲染组件库
-        scope:
-            - web/components/common/
-            - web/components/ui/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/components/knowledge_base:
-        dir_name: 知识库中心（Knowledge Center）前端组件
-        title: 知识库中心（Knowledge Center）前端组件
-        scope:
-            - web/components/knowledge/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: api
-    web_frontend/components/layout_shell:
-        dir_name: 应用外壳与侧边栏布局组件
-        title: 应用外壳与侧边栏布局组件
-        scope:
-            - web/components/layout/
-            - web/components/sidebar/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/components/mcp:
-        dir_name: MCP 服务器管理前端组件集
-        title: MCP 服务器管理前端组件集
-        scope:
-            - web/components/mcp/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: api
-    web_frontend/components/memory:
-        dir_name: 记忆（Memory）三层知识工作区
-        title: 记忆（Memory）三层知识工作区
-        scope:
-            - web/components/memory/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/components/notebook:
-        dir_name: 笔记本记录选择与保存组件
-        title: 笔记本记录选择与保存组件
-        scope:
-            - web/components/notebook/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/components/partners:
-        dir_name: 合作伙伴（Partner）前端组件集
-        title: 合作伙伴（Partner）前端组件集
-        scope:
-            - web/components/partners/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: api
-    web_frontend/components/quiz_research:
-        dir_name: 测验与研究（Quiz & Research）前端组件
-        title: 测验与研究（Quiz & Research）前端组件
-        scope:
-            - web/components/quiz/
-            - web/components/research/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/components/root_shells:
-        dir_name: 根级通用 UI 组件（GeoGebra _ Mermaid _ SessionList _ ThemeScript _ UserAvatar）
-        title: 根级通用 UI 组件（GeoGebra / Mermaid / SessionList / ThemeScript / UserAvatar）
-        scope:
-            - web/components/Geogebra.tsx
-            - web/components/Mermaid.tsx
-            - web/components/SessionList.tsx
-            - web/components/ThemeScript.tsx
-            - web/components/UserAvatar.tsx
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/components/settings:
-        dir_name: 设置中心（Settings Hub）
-        title: 设置中心（Settings Hub）
-        scope:
-            - web/components/settings/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/components/space:
-        dir_name: 学习空间（Learning Space）模块
-        title: 学习空间（Learning Space）模块
-        scope:
-            - web/components/space/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/components/visualize_math:
-        dir_name: 可视化结果渲染器（SVG_Chart.js_Mermaid_HTML_Math Animator）
-        title: 可视化结果渲染器（SVG/Chart.js/Mermaid/HTML/Math Animator）
-        scope:
-            - web/components/visualize/
-            - web/components/math-animator/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/i18n_and_assets:
-        dir_name: 前端国际化与多语言资源
-        title: 前端国际化与多语言资源
-        scope:
-            - web/i18n/
-            - web/locales/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/multi_user_feature:
-        dir_name: 多用户资源授权管理界面
-        title: 多用户资源授权管理界面
-        scope:
-            - web/features/multi-user/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: api
-    web_frontend/shared_libs:
-        dir_name: 前端共享库、Hooks 与全局上下文
-        title: 前端共享库、Hooks 与全局上下文
-        scope:
-            - web/lib/
-            - web/hooks/
-            - web/context/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    web_frontend/tests:
-        dir_name: Web 前端测试套件（Node 单元测试与 Playwright E2E）
-        title: Web 前端测试套件（Node 单元测试与 Playwright E2E）
-        scope:
-            - web/tests/
         source_files: []
         children: []
         depends_on: []
