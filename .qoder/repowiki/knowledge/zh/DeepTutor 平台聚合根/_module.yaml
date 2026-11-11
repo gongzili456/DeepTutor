@@ -1,0 +1,38 @@
+schema_version: 1
+module_path: ""
+title: DeepTutor 平台聚合根
+scope:
+    - README.md
+    - CONTRIBUTING.md
+    - AGENTS.md
+    - SKILL.md
+    - Communication.md
+    - CITATION.cff
+    - THIRD_PARTY_NOTICES.md
+    - .gitignore
+    - .dockerignore
+    - .pre-commit-config.yaml
+    - .secrets.baseline
+    - pyproject.toml
+    - requirements.txt
+    - Dockerfile
+    - Dockerfile.runner
+    - compose.yaml
+    - compose.codex-oauth.yaml
+    - docker-compose.yml
+    - docker-compose.dev.yml
+    - docker-compose.ghcr.yml
+    - .env.example
+    - .gitattributes
+    - .importlinter
+    - CODE_OF_CONDUCT.md
+    - CONTRIBUTING_CN.md
+    - CONTRIBUTORS.md
+    - LICENSE
+    - MANIFEST.in
+    - build_metadata.py
+    - build_support.py
+    - setup.py
+source_files: []
+depends_on: []
+related_to: []

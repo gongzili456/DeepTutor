@@ -1,0 +1,15 @@
+schema_version: 1
+module_path: backend/services/rag/shared_orchestration
+title: RAG 服务与多引擎编排层
+scope:
+    - deeptutor/services/rag/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/knowledge
+    - path: backend/services/rag/pipeline_adapters
+    - path: backend/services/rag/pipeline_graphrag
+    - path: backend/services/rag/pipeline_ima
+    - path: backend/services/rag/pipeline_lightrag
+    - path: backend/services/rag/pipeline_llamaindex
+    - path: backend/services/rag/pipeline_pageindex

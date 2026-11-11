@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: backend/api/api_runtime
+title: FastAPI 应用启动与运行时工具集
+scope:
+    - deeptutor/api/main.py
+    - deeptutor/api/run_server.py
+    - deeptutor/api/utils/
+source_files: []
+depends_on: []
+related_to:
+    - path: cli_tool

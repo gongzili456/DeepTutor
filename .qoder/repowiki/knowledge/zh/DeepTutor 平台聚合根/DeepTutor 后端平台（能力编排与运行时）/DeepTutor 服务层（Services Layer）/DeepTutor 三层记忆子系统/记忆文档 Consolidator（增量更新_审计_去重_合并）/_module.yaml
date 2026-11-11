@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: backend/services/memory/consolidator
+title: 记忆文档 Consolidator（增量更新/审计/去重/合并）
+scope:
+    - deeptutor/services/memory/consolidator/
+    - deeptutor/services/memory/prompts/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/services/memory/core_layer

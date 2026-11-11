@@ -1,8 +1,0 @@
-schema_version: 1
-module_path: backend/co_writer
-title: Co-Writer 协同编辑 Agent 与文档存储
-scope:
-    - deeptutor/co_writer/
-source_files: []
-depends_on: []
-related_to: []

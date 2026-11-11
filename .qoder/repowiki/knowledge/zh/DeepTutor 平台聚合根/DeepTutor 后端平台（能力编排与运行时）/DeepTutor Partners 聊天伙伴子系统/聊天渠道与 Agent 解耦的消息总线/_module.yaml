@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: backend/partners/bus
+title: 聊天渠道与 Agent 解耦的消息总线
+scope:
+    - deeptutor/partners/bus/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/partners/channels

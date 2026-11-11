@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/tools
+title: DeepTutor Agent 工具层（Built-in Tools & Prompt Hints）
+scope:
+    - deeptutor/tools/
+source_files: []
+depends_on: []
+related_to: []

@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: backend/book/agents_pipeline
+title: BookEngine 多阶段 Agent 流水线
+scope:
+    - deeptutor/book/agents/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/book/blocks_catalog
+    - path: backend/book/book_core
+    - path: backend/book/compiler_engine

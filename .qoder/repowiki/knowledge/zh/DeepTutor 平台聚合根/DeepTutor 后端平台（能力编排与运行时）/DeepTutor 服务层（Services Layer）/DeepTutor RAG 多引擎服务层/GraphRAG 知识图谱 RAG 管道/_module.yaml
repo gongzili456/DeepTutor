@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: backend/services/rag/pipeline_graphrag
+title: GraphRAG 知识图谱 RAG 管道
+scope:
+    - deeptutor/services/rag/pipelines/graphrag/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/services/rag/shared_orchestration

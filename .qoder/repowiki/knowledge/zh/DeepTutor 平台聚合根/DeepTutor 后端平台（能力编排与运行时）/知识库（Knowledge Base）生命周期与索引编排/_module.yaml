@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: backend/knowledge
+title: 知识库（Knowledge Base）生命周期与索引编排
+scope:
+    - deeptutor/knowledge/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/agents/question
+    - path: backend/api/content_learning
+    - path: backend/services/rag/shared_orchestration

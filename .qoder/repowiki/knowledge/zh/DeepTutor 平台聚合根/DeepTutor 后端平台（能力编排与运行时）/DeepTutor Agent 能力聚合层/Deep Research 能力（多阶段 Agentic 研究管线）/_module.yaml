@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: backend/agents/research
+title: Deep Research 能力（多阶段 Agentic 研究管线）
+scope:
+    - deeptutor/agents/research/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/agents/shared_core
+    - path: backend/services/subagent

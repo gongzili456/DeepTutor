@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: backend/services/parsing
+title: DeepTutor 文档解析服务（多引擎桥接层）
+scope:
+    - deeptutor/services/parsing/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/co_writer

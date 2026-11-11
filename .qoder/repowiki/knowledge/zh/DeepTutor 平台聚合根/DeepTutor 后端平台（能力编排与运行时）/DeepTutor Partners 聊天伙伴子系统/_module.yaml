@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/partners
+title: DeepTutor Partners 聊天伙伴子系统
+scope:
+    - deeptutor/partners/
+source_files: []
+depends_on: []
+related_to: []

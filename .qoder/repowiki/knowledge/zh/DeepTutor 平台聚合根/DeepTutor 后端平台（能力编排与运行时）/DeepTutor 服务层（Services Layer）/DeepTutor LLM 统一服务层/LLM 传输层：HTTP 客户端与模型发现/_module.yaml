@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: backend/services/llm/transport
+title: LLM 传输层：HTTP 客户端与模型发现
+scope:
+    - deeptutor/services/llm/openai_http_client.py
+    - deeptutor/services/llm/cloud_provider.py
+    - deeptutor/services/llm/local_provider.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/services/llm/orchestration

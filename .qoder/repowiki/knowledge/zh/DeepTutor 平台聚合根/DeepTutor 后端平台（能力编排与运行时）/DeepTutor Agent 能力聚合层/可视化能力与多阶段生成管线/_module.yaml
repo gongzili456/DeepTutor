@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/agents/visualize
+title: 可视化能力与多阶段生成管线
+scope:
+    - deeptutor/agents/visualize/
+source_files: []
+depends_on: []
+related_to: []

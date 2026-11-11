@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: backend/api/partners_integrations
+title: 合作伙伴与渠道集成 API
+scope:
+    - deeptutor/api/routers/partners.py
+    - deeptutor/api/routers/_partners_channel_schema.py
+    - deeptutor/api/routers/plugins_api.py
+    - deeptutor/api/routers/imports.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/services/partners
+    - path: web_frontend/route_workspace/partners

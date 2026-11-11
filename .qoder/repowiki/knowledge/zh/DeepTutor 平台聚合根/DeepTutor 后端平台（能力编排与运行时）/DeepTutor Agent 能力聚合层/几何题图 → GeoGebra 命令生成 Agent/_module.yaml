@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/agents/vision_solver
+title: 几何题图 → GeoGebra 命令生成 Agent
+scope:
+    - deeptutor/agents/vision_solver/
+source_files: []
+depends_on: []
+related_to: []

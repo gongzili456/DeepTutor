@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/services/rag/eval
+title: RAG 检索质量评估与回归对比
+scope:
+    - deeptutor/services/rag/eval/
+source_files: []
+depends_on: []
+related_to: []

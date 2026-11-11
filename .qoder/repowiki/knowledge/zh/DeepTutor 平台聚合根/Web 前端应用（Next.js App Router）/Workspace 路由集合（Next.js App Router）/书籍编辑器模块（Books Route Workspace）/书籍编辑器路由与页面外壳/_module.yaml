@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: web_frontend/route_workspace/book_editor/book_editor_shell
+title: 书籍编辑器路由与页面外壳
+scope:
+    - web/app/(workspace)/learning/books/components/
+    - web/app/(workspace)/learning/books/page.tsx
+source_files: []
+depends_on: []
+related_to:
+    - path: web_frontend/route_workspace/book_editor/book_routes

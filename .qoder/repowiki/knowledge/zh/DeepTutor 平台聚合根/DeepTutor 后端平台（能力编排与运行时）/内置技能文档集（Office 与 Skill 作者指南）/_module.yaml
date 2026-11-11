@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/skills_builtin
+title: 内置技能文档集（Office 与 Skill 作者指南）
+scope:
+    - deeptutor/skills/builtin/
+source_files: []
+depends_on: []
+related_to: []

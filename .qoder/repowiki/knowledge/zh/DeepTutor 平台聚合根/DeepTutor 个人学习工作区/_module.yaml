@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: learning
+title: DeepTutor 个人学习工作区
+scope:
+    - learning/
+source_files: []
+depends_on: []
+related_to: []

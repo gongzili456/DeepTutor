@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: web_frontend/route_workspace/co_writer
+title: Co-Writer 协作文本编辑器路由层
+scope:
+    - web/app/(workspace)/co-writer/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/api/co_writer_and_subagents

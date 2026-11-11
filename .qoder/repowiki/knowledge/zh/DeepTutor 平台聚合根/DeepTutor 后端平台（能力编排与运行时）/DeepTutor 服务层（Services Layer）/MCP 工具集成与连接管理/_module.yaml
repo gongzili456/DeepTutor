@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: backend/services/mcp
+title: MCP 工具集成与连接管理
+scope:
+    - deeptutor/services/mcp/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/runtime/providers

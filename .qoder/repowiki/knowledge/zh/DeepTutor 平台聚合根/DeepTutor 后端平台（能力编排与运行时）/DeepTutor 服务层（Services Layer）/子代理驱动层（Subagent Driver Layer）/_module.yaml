@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: backend/services/subagent
+title: 子代理驱动层（Subagent Driver Layer）
+scope:
+    - deeptutor/services/subagent/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/agents/research
+    - path: backend/api/co_writer_and_subagents

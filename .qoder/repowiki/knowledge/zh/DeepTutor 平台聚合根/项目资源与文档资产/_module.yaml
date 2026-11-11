@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: assets_and_docs
+title: 项目资源与文档资产
+scope:
+    - assets/
+source_files: []
+depends_on: []
+related_to:
+    - path: scripts_and_packaging

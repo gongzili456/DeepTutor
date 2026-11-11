@@ -1,0 +1,16 @@
+schema_version: 1
+module_path: backend/api/content_learning
+title: 学习内容 API 路由（Book / Knowledge / Question / Mastery Path / Skills / Personas）
+scope:
+    - deeptutor/api/routers/book.py
+    - deeptutor/api/routers/knowledge.py
+    - deeptutor/api/routers/question.py
+    - deeptutor/api/routers/question_notebook.py
+    - deeptutor/api/routers/mastery_path.py
+    - deeptutor/api/routers/skills.py
+    - deeptutor/api/routers/personas.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/knowledge
+    - path: web_frontend/route_workspace/book_editor

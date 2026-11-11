@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: backend/services/voice
+title: 语音服务（TTS/STT 适配器与编排）
+scope:
+    - deeptutor/services/voice/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/api/dashboard_and_voice

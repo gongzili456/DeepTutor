@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/services/prompt
+title: Prompt 模板统一加载与语言指令服务
+scope:
+    - deeptutor/services/prompt/
+source_files: []
+depends_on: []
+related_to: []

@@ -1,0 +1,15 @@
+schema_version: 1
+module_path: backend/capabilities/capability_framework
+title: 聊天循环能力协议与注册中心
+scope:
+    - deeptutor/capabilities/protocol.py
+    - deeptutor/capabilities/registry.py
+    - deeptutor/capabilities/__init__.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/capabilities/explore_context
+    - path: backend/capabilities/mastery
+    - path: backend/capabilities/obsidian
+    - path: backend/capabilities/solve
+    - path: backend/capabilities/subagent

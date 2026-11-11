@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: scripts_and_packaging
+title: 构建脚本与打包元数据
+scope:
+    - scripts/
+    - packaging/
+    - requirements/
+source_files: []
+depends_on: []
+related_to:
+    - path: assets_and_docs
+    - path: github_ci
+    - path: shared_packages

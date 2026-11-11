@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/services/imagegen
+title: 文本生成图像服务适配器层
+scope:
+    - deeptutor/services/imagegen/
+source_files: []
+depends_on: []
+related_to: []

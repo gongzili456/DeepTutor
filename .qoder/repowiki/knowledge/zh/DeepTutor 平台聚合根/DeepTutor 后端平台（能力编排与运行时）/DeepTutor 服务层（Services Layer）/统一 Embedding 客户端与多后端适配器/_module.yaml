@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/services/embedding
+title: 统一 Embedding 客户端与多后端适配器
+scope:
+    - deeptutor/services/embedding/
+source_files: []
+depends_on: []
+related_to: []

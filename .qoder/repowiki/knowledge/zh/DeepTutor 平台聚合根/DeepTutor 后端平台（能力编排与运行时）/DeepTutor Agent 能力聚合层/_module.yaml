@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/agents
+title: DeepTutor Agent 能力聚合层
+scope:
+    - deeptutor/agents/
+source_files: []
+depends_on: []
+related_to: []

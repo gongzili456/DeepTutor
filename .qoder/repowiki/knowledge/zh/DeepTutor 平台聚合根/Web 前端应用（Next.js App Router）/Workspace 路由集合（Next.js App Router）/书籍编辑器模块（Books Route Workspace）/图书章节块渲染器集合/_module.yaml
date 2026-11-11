@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: web_frontend/route_workspace/book_editor/block_renderer
+title: 图书章节块渲染器集合
+scope:
+    - web/app/(workspace)/learning/books/components/blocks/
+source_files: []
+depends_on: []
+related_to:
+    - path: web_frontend/route_workspace/book_editor/book_routes

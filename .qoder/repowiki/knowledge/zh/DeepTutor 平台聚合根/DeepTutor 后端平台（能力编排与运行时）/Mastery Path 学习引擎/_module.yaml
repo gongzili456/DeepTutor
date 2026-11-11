@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/learning
+title: Mastery Path 学习引擎
+scope:
+    - deeptutor/learning/
+source_files: []
+depends_on: []
+related_to: []

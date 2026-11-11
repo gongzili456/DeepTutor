@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: backend/services/llm/capabilities
+title: LLM Provider 能力与多模态/推理参数适配层
+scope:
+    - deeptutor/services/llm/capabilities.py
+    - deeptutor/services/llm/multimodal.py
+    - deeptutor/services/llm/reasoning_params.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/services/llm/provider_core

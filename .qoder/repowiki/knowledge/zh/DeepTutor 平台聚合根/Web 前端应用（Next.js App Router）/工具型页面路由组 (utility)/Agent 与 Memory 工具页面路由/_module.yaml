@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: web_frontend/route_utility/agent_utilities
+title: Agent 与 Memory 工具页面路由
+scope:
+    - web/app/(utility)/agents/
+    - web/app/(utility)/knowledge/
+    - web/app/(utility)/memory/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/api/notebook_and_outputs

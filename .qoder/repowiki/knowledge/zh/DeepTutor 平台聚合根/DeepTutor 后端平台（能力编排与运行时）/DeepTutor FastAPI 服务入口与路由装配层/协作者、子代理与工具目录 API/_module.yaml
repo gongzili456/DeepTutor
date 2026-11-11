@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: backend/api/co_writer_and_subagents
+title: 协作者、子代理与工具目录 API
+scope:
+    - deeptutor/api/routers/co_writer.py
+    - deeptutor/api/routers/subagents.py
+    - deeptutor/api/routers/tools.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/services/subagent
+    - path: web_frontend/route_workspace/co_writer

@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: backend/services/rag/pipeline_lightrag
+title: LightRAG 原生知识图谱 RAG 管道
+scope:
+    - deeptutor/services/rag/pipelines/lightrag/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/services/rag/shared_orchestration

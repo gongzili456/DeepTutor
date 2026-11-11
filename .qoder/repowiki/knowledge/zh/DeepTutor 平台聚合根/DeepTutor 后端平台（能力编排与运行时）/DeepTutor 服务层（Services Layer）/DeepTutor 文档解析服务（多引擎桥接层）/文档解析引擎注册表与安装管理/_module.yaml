@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: backend/services/parsing/engine_registry
+title: 文档解析引擎注册表与安装管理
+scope:
+    - deeptutor/services/parsing/engines/factory.py
+    - deeptutor/services/parsing/engines/formats.py
+    - deeptutor/services/parsing/engines/_install.py
+    - deeptutor/services/parsing/engines/_versions.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/services/parsing/parsing_core

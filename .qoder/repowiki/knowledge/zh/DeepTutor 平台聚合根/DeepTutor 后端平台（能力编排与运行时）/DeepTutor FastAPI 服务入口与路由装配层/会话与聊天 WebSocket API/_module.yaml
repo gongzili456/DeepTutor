@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: backend/api/chat_and_sessions
+title: 会话与聊天 WebSocket API
+scope:
+    - deeptutor/api/routers/chat.py
+    - deeptutor/api/routers/sessions.py
+    - deeptutor/api/routers/unified_ws.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/runtime/registry

@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: backend/services/parsing/pdf_engines
+title: 文档解析引擎适配层（Docling / LiteParse / MarkItDown / PyMuPDF4LLM）
+scope:
+    - deeptutor/services/parsing/engines/docling/
+    - deeptutor/services/parsing/engines/liteparse/
+    - deeptutor/services/parsing/engines/markitdown/
+    - deeptutor/services/parsing/engines/pymupdf4llm/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/services/parsing/parsing_core

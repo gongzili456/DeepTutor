@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/api
+title: DeepTutor FastAPI 服务入口与路由装配层
+scope:
+    - deeptutor/api/
+source_files: []
+depends_on: []
+related_to: []

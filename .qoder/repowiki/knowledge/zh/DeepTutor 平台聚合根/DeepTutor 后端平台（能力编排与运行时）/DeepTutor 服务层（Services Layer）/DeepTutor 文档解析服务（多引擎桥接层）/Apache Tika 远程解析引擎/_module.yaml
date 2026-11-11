@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: backend/services/parsing/tika_engine
+title: Apache Tika 远程解析引擎
+scope:
+    - deeptutor/services/parsing/engines/tika/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/services/parsing/parsing_core

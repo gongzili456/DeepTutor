@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/multi_user
+title: 多用户权限与资源隔离层
+scope:
+    - deeptutor/multi_user/
+source_files: []
+depends_on: []
+related_to: []

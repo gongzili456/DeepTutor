@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/book
+title: DeepTutor Book Engine
+scope:
+    - deeptutor/book/
+source_files: []
+depends_on: []
+related_to: []

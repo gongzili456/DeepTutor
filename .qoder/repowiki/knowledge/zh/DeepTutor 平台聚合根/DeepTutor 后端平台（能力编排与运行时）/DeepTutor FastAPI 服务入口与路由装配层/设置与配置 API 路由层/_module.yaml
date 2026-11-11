@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: backend/api/settings_and_config
+title: 设置与配置 API 路由层
+scope:
+    - deeptutor/api/routers/settings.py
+    - deeptutor/api/routers/capabilities_settings.py
+    - deeptutor/api/routers/mcp_settings.py
+    - deeptutor/api/routers/agent_config.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/services/config
+    - path: web_frontend/route_utility/workspace_utilities

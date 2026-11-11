@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: backend/services/model_selection
+title: LLM 模型选择与任务模型运行时
+scope:
+    - deeptutor/services/model_selection/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/services/config

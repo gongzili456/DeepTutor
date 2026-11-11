@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/i18n
+title: DeepTutor 国际化（i18n）资源与工具
+scope:
+    - deeptutor/i18n/
+source_files: []
+depends_on: []
+related_to: []

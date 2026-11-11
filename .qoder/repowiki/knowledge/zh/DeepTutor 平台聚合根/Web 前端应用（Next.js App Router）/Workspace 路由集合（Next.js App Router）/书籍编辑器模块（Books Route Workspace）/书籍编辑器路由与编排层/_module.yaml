@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: web_frontend/route_workspace/book_editor/book_routes
+title: 书籍编辑器路由与编排层
+scope:
+    - web/app/(workspace)/learning/books/[bookId]/
+    - web/app/(workspace)/learning/books/BooksRoute.tsx
+source_files: []
+depends_on: []
+related_to:
+    - path: web_frontend/route_workspace/book_editor/block_renderer
+    - path: web_frontend/route_workspace/book_editor/book_editor_shell

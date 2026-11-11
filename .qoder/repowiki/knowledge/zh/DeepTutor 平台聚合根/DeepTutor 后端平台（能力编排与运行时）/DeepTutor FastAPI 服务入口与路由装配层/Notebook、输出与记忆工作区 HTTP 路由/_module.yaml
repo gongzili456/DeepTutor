@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: backend/api/notebook_and_outputs
+title: Notebook、输出与记忆工作区 HTTP 路由
+scope:
+    - deeptutor/api/routers/notebook.py
+    - deeptutor/api/routers/outputs.py
+    - deeptutor/api/routers/attachments.py
+    - deeptutor/api/routers/memory.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/services/session
+    - path: web_frontend/route_utility/agent_utilities

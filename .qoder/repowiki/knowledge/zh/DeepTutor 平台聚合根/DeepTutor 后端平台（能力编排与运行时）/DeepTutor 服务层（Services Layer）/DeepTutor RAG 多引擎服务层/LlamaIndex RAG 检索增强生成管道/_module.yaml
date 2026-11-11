@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: backend/services/rag/pipeline_llamaindex
+title: LlamaIndex RAG 检索增强生成管道
+scope:
+    - deeptutor/services/rag/pipelines/llamaindex/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/services/rag/shared_orchestration

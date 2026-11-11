@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/services/persona
+title: Persona 行为/语气预设服务
+scope:
+    - deeptutor/services/persona/
+source_files: []
+depends_on: []
+related_to: []

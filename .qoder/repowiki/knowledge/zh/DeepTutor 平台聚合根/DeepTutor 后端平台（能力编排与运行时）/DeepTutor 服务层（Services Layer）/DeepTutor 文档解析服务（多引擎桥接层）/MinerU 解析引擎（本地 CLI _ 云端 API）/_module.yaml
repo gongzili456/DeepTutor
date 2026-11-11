@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: backend/services/parsing/mineru_engine
+title: MinerU 解析引擎（本地 CLI / 云端 API）
+scope:
+    - deeptutor/services/parsing/engines/mineru/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/services/parsing/parsing_core

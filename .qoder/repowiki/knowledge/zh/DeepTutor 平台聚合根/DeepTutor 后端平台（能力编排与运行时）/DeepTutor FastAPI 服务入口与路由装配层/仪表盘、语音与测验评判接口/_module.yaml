@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: backend/api/dashboard_and_voice
+title: 仪表盘、语音与测验评判接口
+scope:
+    - deeptutor/api/routers/dashboard.py
+    - deeptutor/api/routers/voice.py
+    - deeptutor/api/routers/quiz_judge.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/services/voice

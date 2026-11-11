@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: backend/agents/shared_core
+title: Agent 基类与跨能力共享工具
+scope:
+    - deeptutor/agents/_shared/
+    - deeptutor/agents/base_agent.py
+    - deeptutor/agents/__init__.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/agents/chat
+    - path: backend/agents/research

@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: web_frontend/route_utility/workspace_utilities
+title: 工作区与用户资料工具页面
+scope:
+    - web/app/(utility)/notebook/
+    - web/app/(utility)/profile/
+    - web/app/(utility)/space/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/api/settings_and_config

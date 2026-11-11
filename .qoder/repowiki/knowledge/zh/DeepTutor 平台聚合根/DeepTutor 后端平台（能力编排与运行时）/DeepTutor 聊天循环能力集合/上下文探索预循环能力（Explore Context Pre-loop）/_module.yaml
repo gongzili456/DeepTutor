@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: backend/capabilities/explore_context
+title: 上下文探索预循环能力（Explore Context Pre-loop）
+scope:
+    - deeptutor/capabilities/explore_context/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/capabilities/capability_framework

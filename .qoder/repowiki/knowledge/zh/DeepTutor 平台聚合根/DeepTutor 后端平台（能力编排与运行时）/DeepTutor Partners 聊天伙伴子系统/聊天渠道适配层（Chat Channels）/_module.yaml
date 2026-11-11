@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: backend/partners/channels
+title: 聊天渠道适配层（Chat Channels）
+scope:
+    - deeptutor/partners/channels/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/partners/bus
+    - path: backend/partners/config
+    - path: backend/services/partners

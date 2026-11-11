@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/services/skill
+title: Skill 能力包服务与外部 Hub 分发
+scope:
+    - deeptutor/services/skill/
+source_files: []
+depends_on: []
+related_to: []

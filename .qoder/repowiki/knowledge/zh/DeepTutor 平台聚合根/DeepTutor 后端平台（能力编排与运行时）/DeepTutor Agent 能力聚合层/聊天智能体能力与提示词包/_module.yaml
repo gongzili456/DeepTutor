@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: backend/agents/chat
+title: 聊天智能体能力与提示词包
+scope:
+    - deeptutor/agents/chat/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/agents/shared_core
+    - path: backend/capabilities/mastery

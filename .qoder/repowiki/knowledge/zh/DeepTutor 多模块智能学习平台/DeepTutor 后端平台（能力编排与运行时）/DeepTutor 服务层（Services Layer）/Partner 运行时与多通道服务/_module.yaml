@@ -1,8 +1,0 @@
-schema_version: 1
-module_path: backend/services/partners
-title: Partner 运行时与多通道服务
-scope:
-    - deeptutor/services/partners/
-source_files: []
-depends_on: []
-related_to: []

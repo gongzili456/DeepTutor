@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: backend/services/rag/pipeline_adapters
+title: 外部 RAG 后端适配器（Kiwix / LightRAG Server / WeKnora）
+scope:
+    - deeptutor/services/rag/pipelines/kiwix/
+    - deeptutor/services/rag/pipelines/lightrag_server/
+    - deeptutor/services/rag/pipelines/weknora/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/services/rag/shared_orchestration
